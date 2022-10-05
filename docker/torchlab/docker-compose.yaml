@@ -1,0 +1,35 @@
+version: "3.7"
+services:
+  torchlab:
+    build:
+      context: ${HOME}/${REPOS}/${REPO}
+      dockerfile: docker/${APP}/Dockerfile
+    image: ${APP}:latest
+    command:
+      - "jupyter"
+      - "lab"
+      - "--allow-root" # Needed to run as root user
+      - "--ip=0.0.0.0" # Needed when running inside a Docker container
+      - "--port=${JUPYTERLAB_PORT}"
+      - "--no-browser"
+      - "--LabApp.token=''" # Turn off security feature
+    # 'init: true' indicates Docker will handle child process reaping.
+    # This is critical for Jupyter to run correctly inside Docker.
+    init: true
+    # This deploy entry allows the GPU to be used from the container
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    ports:
+      - "${JUPYTERLAB_PORT}:${JUPYTERLAB_PORT}"
+    environment:
+      - PYTHONPATH=${PYTHON_SITE_PACKAGES}
+    volumes:
+      - ${HOME}/${REPOS}/${REPO}/tlab/:${PYTHON_SITE_PACKAGES}/tlab/
+      - ${HOME}/${REPOS}/${REPO}/data/:/${APP}/data/
+      - ${HOME}/${VOLUMES}/notebooks/:/${APP}/notebooks/
+      - ${HOME}/${VOLUMES}/configuration/.jupyter/:/root/.jupyter/

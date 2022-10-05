@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+.pytest_cache/
+.coverage
+*.pkl
+*.pth
+
+# Editor and tools
+.vscode/
+*.code-workspace
+.ipynb_checkpoints/
+
+# Docker build environment
+build/
+
+# Data downloaded for model training
+data/
+
+# Profiling
+*.prof
