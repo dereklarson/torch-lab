@@ -1,3 +1,11 @@
+"""A Transformer model that is trivially parallelized for running multiple
+samples of initialization. Essentially, an extra 'sample' index is prepended to 
+each parameter and there is no interaction across sample indices.
+
+Note: Early benchmarks demonstrated only something like 2x speedup,
+which was surprisingly low. Therefore, this was left as is and not
+incorporated into pipelines.
+"""
 from dataclasses import dataclass
 from typing import Optional
 
@@ -19,70 +27,71 @@ class TransformerConfig:
     n_layers: int
     n_vocab: int
     weight_alpha: float
+    sample_count: int = 1
 
 
-class Embed(nn.Module):
+class EmbedGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
         self.W_E = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.n_vocab, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.n_vocab, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
 
     def forward(self, x):
-        return self.W_E[x]
+        return einops.rearrange(self.W_E[:, x], "s b c e -> b s c e")
 
 
-class Unembed(nn.Module):
+class UnembedGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
         self.W_U = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.d_embed, cfg.n_vocab)
+            * torch.randn(cfg.sample_count, cfg.d_embed, cfg.n_vocab)
             / np.sqrt(cfg.n_vocab)
         )
 
     def forward(self, x):
-        return x @ self.W_U
+        return torch.einsum("bsce,sev -> bscv", x, self.W_U)
+        # return x @ self.W_U
 
 
-class PositionEmbed(nn.Module):
+class PositionEmbedGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
         self.W_pos = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.n_ctx, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.n_ctx, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
 
     def forward(self, x):
-        return x + self.W_pos[: x.shape[-2]]
+        return x + self.W_pos[:, : x.shape[-2]]
 
 
-# Attention
-class Attention(nn.Module):
+class AttentionGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
 
         self.W_K = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.n_heads, cfg.d_head, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.n_heads, cfg.d_head, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
         self.W_Q = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.n_heads, cfg.d_head, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.n_heads, cfg.d_head, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
         self.W_V = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.n_heads, cfg.d_head, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.n_heads, cfg.d_head, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
         self.W_O = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.d_embed, cfg.d_head * cfg.n_heads)
+            * torch.randn(cfg.sample_count, cfg.d_embed, cfg.d_head * cfg.n_heads)
             / np.sqrt(cfg.d_embed)
         )
         self.register_buffer("mask", torch.tril(torch.ones((cfg.n_ctx, cfg.n_ctx))))
@@ -95,10 +104,10 @@ class Attention(nn.Module):
         self.hook_attn_pre = HookPoint()
 
     def forward(self, x):
-        k = self.hook_k(torch.einsum("ihd,bpd->biph", self.W_K, x))
-        q = self.hook_q(torch.einsum("ihd,bpd->biph", self.W_Q, x))
-        v = self.hook_v(torch.einsum("ihd,bpd->biph", self.W_V, x))
-        attn_scores_pre = torch.einsum("biph,biqh->biqp", k, q)
+        k = self.hook_k(torch.einsum("sihd,bspd->bsiph", self.W_K, x))
+        q = self.hook_q(torch.einsum("sihd,bspd->bsiph", self.W_Q, x))
+        v = self.hook_v(torch.einsum("sihd,bspd->bsiph", self.W_V, x))
+        attn_scores_pre = torch.einsum("bsiph,bsiqh->bsiqp", k, q)
         attn_scores_masked = torch.tril(attn_scores_pre) - 1e10 * (
             1 - self.mask[: x.shape[-2], : x.shape[-2]]
         )
@@ -108,24 +117,24 @@ class Attention(nn.Module):
                 dim=-1,
             )
         )
-        z = self.hook_z(torch.einsum("biph,biqp->biqh", v, attn_matrix))
-        z_flat = einops.rearrange(z, "b i q h -> b q (i h)")
-        out = torch.einsum("df,bqf->bqd", self.W_O, z_flat)
+        z = self.hook_z(torch.einsum("bsiph,bsiqp->bsiqh", v, attn_matrix))
+        z_flat = einops.rearrange(z, "b s i q h -> b s q (i h)")
+        out = torch.einsum("sdf,bsqf->bsqd", self.W_O, z_flat)
         return out
 
 
-class MLP(nn.Module):
+class MLPGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
         self.W_in = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.d_mlp, cfg.d_embed)
+            * torch.randn(cfg.sample_count, cfg.d_mlp, cfg.d_embed)
             / np.sqrt(cfg.d_embed)
         )
         self.b_in = nn.Parameter(torch.zeros(cfg.d_mlp))
         self.W_out = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.d_embed, cfg.d_mlp)
+            * torch.randn(cfg.sample_count, cfg.d_embed, cfg.d_mlp)
             / np.sqrt(cfg.d_embed)
         )
         self.b_out = nn.Parameter(torch.zeros(cfg.d_embed))
@@ -134,25 +143,25 @@ class MLP(nn.Module):
         self.hook_post = HookPoint()
 
     def forward(self, x):
-        x = self.hook_pre(torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in)
+        x = self.hook_pre(torch.einsum("smd,bspd->bspm", self.W_in, x) + self.b_in)
         if self.act_type == "ReLU":
             x = F.relu(x)
         elif self.act_type == "GeLU":
             x = F.gelu(x)
         x = self.hook_post(x)
-        x = torch.einsum("dm,bpm->bpd", self.W_out, x) + self.b_out
+        x = torch.einsum("sdm,bspm->bspd", self.W_out, x) + self.b_out
         return x
 
 
-class TransformerBlock(nn.Module):
+class TransformerBlockGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
-        self.attn = Attention(cfg)
+        self.attn = AttentionGroup(cfg)
         self.hook_attn_out = HookPoint()
         self.hook_resid_pre = HookPoint()
         self.hook_resid_mid = HookPoint()
         if cfg.d_mlp > 0:
-            self.mlp = MLP(cfg)
+            self.mlp = MLPGroup(cfg)
             self.hook_resid_post = HookPoint()
             self.hook_mlp_out = HookPoint()
 
@@ -165,18 +174,18 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class Transformer(nn.Module):
+class TransformerGroup(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
         self.config = cfg
         self.cache = {}
 
-        self.embed = Embed(cfg)
-        self.position_embed = PositionEmbed(cfg)
+        self.embed = EmbedGroup(cfg)
+        self.position_embed = PositionEmbedGroup(cfg)
         self.blocks = nn.ModuleList(
-            [TransformerBlock(cfg) for i in range(cfg.n_layers)]
+            [TransformerBlockGroup(cfg) for i in range(cfg.n_layers)]
         )
-        self.unembed = Unembed(cfg)
+        self.unembed = UnembedGroup(cfg)
 
         for name, module in self.named_modules():
             if type(module) == HookPoint:
