@@ -1,15 +1,19 @@
-import logging
-from typing import List, Optional, Tuple
+"""Grab-bag of methods for visualizing data.
+"""
 
-import einops
+import logging
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import torch
 from plotly.subplots import make_subplots
+
+from tlab.experiment import Experiment
 from tlab.observation import Observations
 from tlab.optimize import Optimizer
-from tlab.utils.util import to_numpy
+from tlab.utils.util import fourier_basis, to_numpy
 
 
 def _scatter(
@@ -118,13 +122,107 @@ def group_plot(
     return fig
 
 
-def imshow(tensor, p: int, xaxis=None, yaxis=None, animation_name="Snapshot", **kwargs):
+def imshow(tensor, p: int, labels: Optional[Dict[str, str]] = None, **kwargs):
     tensor = torch.squeeze(tensor)
     px.imshow(
         to_numpy(tensor, flat=False),
-        labels={"x": xaxis, "y": yaxis, "animation_name": animation_name},
+        labels=labels or {},
         **kwargs,
     ).show()
+
+
+def plot_ft(mat: torch.Tensor, p: int, **kwargs):
+    basis = fourier_basis(p)
+    labels = {"x": "X input", "y": "Embedding Dimension"}
+    _kwargs = dict(color_continuous_scale="RdBu", color_continuous_midpoint=0.0)
+    _kwargs.update(kwargs)
+    if len(mat.shape) == 3:
+        ft_frames = to_numpy(torch.einsum("fpe,Ep -> feE", mat, basis))
+        px.imshow(ft_frames, animation_frame=0, labels=labels, **_kwargs).show()
+    else:
+        ft = to_numpy(torch.einsum("pe,Ep -> eE", mat, basis))
+        px.imshow(ft, labels=labels, **_kwargs).show()
+
+
+def _select_from_exp(exp: Experiment, constraints: Dict[str, int] = None):
+    constraints = constraints or {}
+    for xcon in exp.configure():
+        if any(xcon.params.get(key) != val for key, val in constraints.items()):
+            continue
+        try:
+            all_params = xcon.get_model_state(exp.path)
+            yield xcon, all_params
+        except:
+            print(f"Error loading {xcon.filebase}")
+            continue
+
+
+def plot_experiment_ft(
+    exp: Experiment,
+    param: str = "embed.W_E",
+    constraints: Dict[str, int] = None,
+    transpose: bool = False,
+):
+    weights = []
+    for _, all_params in _select_from_exp(exp, constraints=constraints):
+        param_data = all_params[param]
+        if transpose:
+            param_data = param_data.T
+        weights.append(param_data)
+
+    weight_stack = torch.stack(weights, dim=0)
+    plot_ft(weight_stack, exp.defaults.get("value_range"))
+
+
+def plot_tensor_vectors(
+    exp: Experiment,
+    constraints: Dict[str, int] = None,
+    param: str = "embed.W_E",
+    transpose: bool = True,
+):
+    traces, slider_steps = [], []
+    frames = exp.count
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
+        param_data = all_params[param]
+        if transpose:
+            param_data = param_data.T
+        cols = param_data.shape[0]
+
+        step = dict(
+            method="update",
+            label=xcon.repr,
+            args=[{"visible": [False] * (frames * cols)}],
+        )
+        for i in range(frames * cols):
+            if (cols * (xcon.idx - 1)) <= i < (cols * xcon.idx):
+                step["args"][0]["visible"][i] = True
+        slider_steps.append(step)
+        for t_idx, trace in enumerate(param_data, 1):
+            traces.append(
+                go.Scatter(
+                    visible=(xcon.idx == 1),
+                    line=dict(color="#22CCDD", width=2),
+                    name="",
+                    y=to_numpy(trace),
+                )
+            )
+
+    fig = make_subplots(1, cols)
+    for idx, trace in enumerate(traces):
+        fig.add_trace(trace, 1, (idx % cols) + 1)
+
+    # Create and add slider
+    sliders = [
+        dict(
+            active=0,
+            currentvalue={"prefix": "params: "},
+            pad={"t": 50},
+            steps=slider_steps,
+        )
+    ]
+    title = f"Tensor '{param}' as row vectors, varying: {list(exp.ranges.keys())}"
+    fig.update_layout(sliders=sliders, title=title)
+    fig.show()
 
 
 def line(x, y=None, hover=None, xaxis="", yaxis="", **kwargs):

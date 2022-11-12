@@ -1,3 +1,14 @@
+"""The Observations class handles extracting and saving model data during training.
+
+As an example, we might be interested in watching the norm of the embedding weights
+as a function of training epoch. We can define a function that, given the model, will
+calculate this value. We register this function with our Observations instance and
+it will keep track of these measurements.
+
+In a small model regime, it can be more useful to keep periodic checkpoints of a model,
+assuming this is sufficient granularity. As model size grows, this can require too much
+disk space, thus this lean approach. 
+"""
 import functools
 import glob
 import logging
@@ -21,6 +32,9 @@ class Observations:
         # Define functions for every observable
         self._obs_funcs = {}
 
+        # 'data' reset during run initialization
+        self.data: Dict[str, Any] = defaultdict(list)
+
     def add_observable(self, obs_name: str, obs_kwargs: Dict[str, Any]) -> None:
         func = getattr(Observables, obs_name)
         if not obs_kwargs:
@@ -39,8 +53,9 @@ class Observations:
         else:
             logging.warning(f"Too many kwargs for {obs_name} observation: {obs_kwargs}")
 
-    def init_run(self) -> None:
+    def init_run(self, tag: str) -> None:
         self.data: Dict[str, Any] = defaultdict(list)
+        self.data["tag"] = tag
 
     def observe(
         self,
@@ -59,6 +74,7 @@ class Observations:
 
     @classmethod
     def load_observations(cls, root: Path, filebase: str):
+        """Load one datafile containing observations"""
         obs_path = root / f"{filebase}_obs.pkl"
         try:
             with open(obs_path, "rb") as fh:
@@ -70,10 +86,13 @@ class Observations:
 
     @classmethod
     def load_obs_group(
-        cls, root: Path, verbose: bool = False
+        cls, root: Path, verbose: bool = False, filter_strs: Tuple[str, ...] = tuple()
     ) -> Dict[int, Dict[str, Any]]:
+        """Load all observations from the same experiment folder."""
         data = {}
         for fname in sorted(glob.glob(f"{root}/*_obs.pkl")):
+            if any([fs not in fname for fs in filter_strs]):
+                continue
             parsed = parse.parse("{root}/{dir}/{idx:d}__{tag}_obs.pkl", fname)
             # pairs = [tuple(pair.split("@")) for pair in parsed["tag"].split("_")]
             tag = parsed["tag"].replace("_", ", ").replace("@", ": ")
@@ -108,6 +127,8 @@ def _fourier_components(
 
 
 class Observables:
+    """Collection of functions that can be referenced by add_observable()."""
+
     @staticmethod
     def train_loss(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
         return optim.train_losses[-1]

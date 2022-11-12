@@ -1,3 +1,9 @@
+"""Definition of a single experimental setup.
+
+An XConfiguration provides a full picture of every setting for a training run.
+It also provides some convenience methods for loading, saving, etc.
+An Experiment will specify many XConfigurations.
+"""
 import pickle
 from dataclasses import fields
 from functools import cached_property
@@ -24,21 +30,22 @@ class XConfiguration:
     def __init__(
         self,
         idx: int,
-        data: DataConfig,
-        model: TransformerConfig,
-        optim: OptimConfig,
+        data_cfg: DataConfig,
+        model_cfg: TransformerConfig,
+        optim_cfg: OptimConfig,
         variables: Tuple[str] = tuple(),
     ) -> None:
         self.idx: int = idx
-        self.data: DataConfig = data
-        self.model: TransformerConfig = model
-        self.optim: OptimConfig = optim
+        self.data: DataConfig = data_cfg
+        self.model: TransformerConfig = model_cfg
+        self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
 
     @classmethod
     def from_dict(
         cls, idx: int, conf_dict: Dict[str, Any], variables: Tuple[str] = tuple()
     ) -> "XConfiguration":
+        """Return an XConfiguration from an index and parameter dictionary"""
         if "seed" not in conf_dict:
             conf_dict["seed"] = idx
         conf_args = []
@@ -63,6 +70,7 @@ class XConfiguration:
 
     @cached_property
     def params(self) -> Dict[str, Any]:
+        """Return raw parameter dictionary from the config dataclasses."""
         params = {}
         params.update(vars(self.data))
         params.update(vars(self.model))
@@ -70,7 +78,12 @@ class XConfiguration:
         return params
 
     @property
+    def title(self) -> str:
+        return ", ".join(f"{p}: {self.params[p]}" for p in self.variables)
+
+    @property
     def codes(self) -> List[Tuple[str, Any]]:
+        """Return abbreviated param/value pairs for all varying parameters."""
         codes = []
         for parameter in self.variables:
             par_code = "".join(word[0] for word in parameter.split("_"))
@@ -79,6 +92,7 @@ class XConfiguration:
 
     @property
     def repr(self) -> str:
+        """Convenient descriptor for plots, etc."""
         return ", ".join(f"{code}: {value}" for code, value in self.codes)
 
     @property
@@ -89,13 +103,14 @@ class XConfiguration:
         return f"{self.idx:03}__{tag}"
 
     def summary(self) -> None:
+        """Display pretty output so a user understands the parameters of the run."""
         table = PrettyTable(["Parameter", "Value"])
         for param in sorted(self.params):
             note = "*" if param in self.variables else ""
             table.add_row([f"{note}{param}", self.params[param]])
         print(table)
 
-    def save(self, root: Path, model: Transformer, optim: Optimizer):
+    def save_model(self, root: Path, model: Transformer, optim: Optimizer):
         filepath = root / f"{self.filebase}_mod.pth"
         save_dict = {
             "params": self.params,
@@ -107,3 +122,13 @@ class XConfiguration:
             "epoch": optim.epoch,
         }
         torch.save(save_dict, filepath)
+
+    def get_model_state(self, root: Path):
+        filepath = root / f"{self.filebase}_mod.pth"
+        state_dict = torch.load(filepath)
+        return state_dict["model"]
+
+    def load_model(self, root: Path):
+        model = Transformer(self.model)
+        model.load_state_dict(self.get_model_state(root))
+        return model

@@ -1,4 +1,13 @@
-import functools
+"""The Experiment class provides structure to training a series of DNNs
+
+Exploring the behavior of a system involves probing along its different parameters.
+Defining DNNs such as Transformers, training them, and generating synthetic data
+each involve a set of parameters that can be tuned. This class and associated codebase
+aims to make the experimentation process easier by abstracting away tasks such as
+manual configuration, file management, data collection, etc. This saves some time,
+but critically also reduces error in the experimental setup.
+"""
+
 import itertools
 import logging
 import operator
@@ -12,10 +21,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from prettytable import PrettyTable
 
-from tlab.data import Dataset
-from tlab.models.transformer import Transformer
-from tlab.observation import Observables, Observations
-from tlab.optimize import Optimizer
 from tlab.xconfiguration import VALID_PARAMS, XConfiguration
 
 
@@ -55,6 +60,10 @@ class Experiment:
     def path(self) -> Path:
         return self.root_path / self.tag
 
+    @property
+    def count(self) -> int:
+        return len(list(self._product()))
+
     @classmethod
     def _load(cls, path: Path) -> "Experiment":
         with open(path / cls.exp_file, "rb") as fh:
@@ -63,6 +72,7 @@ class Experiment:
 
     @classmethod
     def load(cls, name: str) -> "Experiment":
+        """Load by name, using default root path"""
         return cls._load(cls.root_path / name)
 
     def save(self) -> None:
@@ -73,6 +83,7 @@ class Experiment:
     def list(
         cls, path: Optional[Path] = None, verbose: bool = False
     ) -> Dict[int, "Experiment"]:
+        """Load and summarize all experiments present at 'path'."""
         path = path or cls.root_path
         table = PrettyTable(["Index", "Experiment", "Varied Parameter", "Values"])
         exc_ct = 0
@@ -98,6 +109,7 @@ class Experiment:
         return result
 
     def add_relation(self, parameter: str, source: str, op: str, value: float) -> None:
+        """Define a parameter that will depend on another via binary op."""
         if parameter not in VALID_PARAMS.keys():
             logging.warning(f"{parameter} is not a defined parameter")
         if source not in VALID_PARAMS.keys():
@@ -105,11 +117,13 @@ class Experiment:
         self.relations[parameter] = Relation(source, op, value)
 
     def add_range(self, parameter: str, values: tuple) -> None:
+        """Define a tuple of values to use for a parameter."""
         if parameter not in VALID_PARAMS.keys():
             logging.warning(f"{parameter} is not a defined parameter")
         self.ranges[parameter] = values
 
     def summary(self) -> None:
+        """Display a pretty summary of the experiment"""
         print(f"Experiment: '{self.tag}':")
         table = PrettyTable(["Parameter", "Value"])
         non_defaults = self.ranges.keys() | self.relations.keys()
@@ -121,9 +135,9 @@ class Experiment:
         for param in sorted(self.ranges.keys()):
             table.add_row([f"*{param}", self.ranges[param]])
         print(table)
-        print(f"Observing: {tuple(self.observables.keys())}")
 
     def _product(self) -> List[Dict[str, float]]:
+        """Expand all combinations of parameter ranges."""
         if not self.ranges:
             return [{}]
 
@@ -146,6 +160,7 @@ class Experiment:
         return full_params
 
     def configure(self) -> XConfiguration:
+        """Generator for XConfigurations of the Experiment."""
         idx = 0
         for variable_dict in self._product():
             idx += 1
@@ -154,6 +169,7 @@ class Experiment:
             yield XConfiguration.from_dict(idx, params, variables)
 
     def initialize_run(self):
+        """Set up file structure for the experiment."""
         if not os.path.isdir(self.path):
             print(f"Creating {self.path}")
             os.mkdir(self.path)
@@ -165,35 +181,4 @@ class Experiment:
             logging.warning(f"{self.path} already exists, stopping")
             return
 
-        # Define functions for every observable
-        self._obs_funcs = {}
-        for key, obs_kwargs in self.observables.items():
-            func = getattr(Observables, key)
-            if not obs_kwargs:
-                self._obs_funcs[key] = func
-            elif len(obs_kwargs) == 1:
-                arg = list(obs_kwargs)[0]
-                if arg in ("device",):
-                    self._obs_funcs[key] = functools.partial(
-                        func, **{arg: obs_kwargs[arg]}
-                    )
-                if arg == "name":
-                    values = obs_kwargs[arg]
-                    for val in values:
-                        fkey = f"{key}_{val}"
-                        self._obs_funcs[fkey] = functools.partial(func, **{arg: val})
-            else:
-                logging.warning(f"Too many kwargs for {key} observation: {obs_kwargs}")
-
         self.save()
-
-    def observe(
-        self,
-        obs: Observations,
-        model: Transformer,
-        optim: Optimizer,
-        data: Dataset,
-        **kwargs,
-    ):
-        for key, func in self._obs_funcs.items():
-            obs.data[key].append(func(model, optim, data, **kwargs))

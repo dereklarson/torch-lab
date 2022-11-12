@@ -1,11 +1,28 @@
+"""Transformer implementation (Decoder only) with Hookpoints.
+
+This implementation derives from Neel Nanda's work on Grokking.
+
+Note: I haven't been using the Hookpoints, just left them in place as they should
+be useful down the road.
+
+Notes on Einstein notation conventions
+ - Repeated, uncontracted indices use caps. e.g. "ij,Ij -> iI" for matrix mult.
+Glossary of indices:
+ - a: attention head
+ - b: batch
+ - c: context
+ - e: embedding dimension
+ - h: head dimension (used in each of k, q, v)
+ - m: MLP hidden dimension
+"""
 from dataclasses import dataclass
-from typing import Optional
 
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from tlab.utils.hookpoint import HookPoint
 
 
@@ -57,7 +74,7 @@ class PositionEmbed(nn.Module):
         )
 
     def forward(self, x):
-        return x + self.W_pos[: x.shape[-2]]
+        return x + self.W_pos
 
 
 # Attention
@@ -95,10 +112,10 @@ class Attention(nn.Module):
         self.hook_attn_pre = HookPoint()
 
     def forward(self, x):
-        k = self.hook_k(torch.einsum("ihd,bpd->biph", self.W_K, x))
-        q = self.hook_q(torch.einsum("ihd,bpd->biph", self.W_Q, x))
-        v = self.hook_v(torch.einsum("ihd,bpd->biph", self.W_V, x))
-        attn_scores_pre = torch.einsum("biph,biqh->biqp", k, q)
+        k = self.hook_k(torch.einsum("ahe,bce->bach", self.W_K, x))
+        q = self.hook_q(torch.einsum("ahe,bce->bach", self.W_Q, x))
+        v = self.hook_v(torch.einsum("ahe,bce->bach", self.W_V, x))
+        attn_scores_pre = torch.einsum("bach,baCh->bacC", k, q)
         attn_scores_masked = torch.tril(attn_scores_pre) - 1e10 * (
             1 - self.mask[: x.shape[-2], : x.shape[-2]]
         )
@@ -108,9 +125,9 @@ class Attention(nn.Module):
                 dim=-1,
             )
         )
-        z = self.hook_z(torch.einsum("biph,biqp->biqh", v, attn_matrix))
-        z_flat = einops.rearrange(z, "b i q h -> b q (i h)")
-        out = torch.einsum("df,bqf->bqd", self.W_O, z_flat)
+        z = self.hook_z(torch.einsum("bach,bacC->baCh", v, attn_matrix))
+        z_flat = einops.rearrange(z, "b a c h -> b c (a h)")
+        out = torch.einsum("ef,bcf->bce", self.W_O, z_flat)
         return out
 
 
@@ -134,13 +151,13 @@ class MLP(nn.Module):
         self.hook_post = HookPoint()
 
     def forward(self, x):
-        x = self.hook_pre(torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in)
+        x = self.hook_pre(torch.einsum("me,bce->bcm", self.W_in, x) + self.b_in)
         if self.act_type == "ReLU":
             x = F.relu(x)
         elif self.act_type == "GeLU":
             x = F.gelu(x)
         x = self.hook_post(x)
-        x = torch.einsum("dm,bpm->bpd", self.W_out, x) + self.b_out
+        x = torch.einsum("em,bcm->bce", self.W_out, x) + self.b_out
         return x
 
 
