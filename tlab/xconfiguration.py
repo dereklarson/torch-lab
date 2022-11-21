@@ -15,8 +15,7 @@ import torch
 from prettytable import PrettyTable
 
 from tlab.data import DataConfig
-from tlab.models.batch_transformer import TransformerConfig
-from tlab.models.transformer import Transformer
+from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.optimize import OptimConfig, Optimizer
 
 VALID_PARAMS = {

@@ -30,6 +30,10 @@ def cos_k(i, k):
     return torch.cos(2 * torch.pi * torch.arange(k) * i / k)
 
 
+def normalize(matrix: np.ndarray, axis: int = 1) -> np.ndarray:
+    return matrix / matrix.sum(axis=1)[:, np.newaxis]
+
+
 @functools.lru_cache(maxsize=None)
 def fourier_basis(k):
     fourier_basis = []

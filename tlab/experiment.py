@@ -102,7 +102,10 @@ class Experiment:
             result[idx] = exp
             tag = exp.tag
             for param in sorted(exp.ranges.keys()):
-                table.add_row([idx, tag, param, exp.ranges[param]])
+                values = exp.ranges[param][:10]
+                if len(exp.ranges[param]) > 10:
+                    values += ("...",)
+                table.add_row([idx, tag, param, values])
                 tag = ""  # Only print experiment tag once
         print(table)
         print(f"{exc_ct} folders failed to load")
@@ -133,7 +136,10 @@ class Experiment:
             rel = self.relations[param]
             table.add_row([f"-> {param}", f"{rel.op}({rel.source}, {rel.value})"])
         for param in sorted(self.ranges.keys()):
-            table.add_row([f"*{param}", self.ranges[param]])
+            values = self.ranges[param][:10]
+            if len(self.ranges[param]) > 10:
+                values += ("...",)
+            table.add_row([f"*{param}", values])
         print(table)
 
     def _product(self) -> List[Dict[str, float]]:

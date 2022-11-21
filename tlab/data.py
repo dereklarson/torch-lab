@@ -22,13 +22,13 @@ class DataConfig:
     operation: str  # Numerical operation to use for label calculation
     training_fraction: float  # Amount of generated data put into training set
     seed: int  # Numpy RNG seed for generating data (separate from PyTorch)
-    style: str = "normal"  # Keyword to trigger different distributions of data
+    dist_style: str = "normal"  # Keyword to trigger different distributions of data
     value_count: int = 2  # How many input values (i.e. Transformer context)
 
 
 def generate_data(cfg: DataConfig, **kwargs):
     np.random.seed(kwargs.get("seed") or cfg.seed)
-    generator = _asymm if cfg.style == "asymm" else _uniform
+    generator = _asymm if cfg.dist_style == "asymm" else _uniform
 
     train, test = generator(cfg)
     operation = _get_operation(cfg)
