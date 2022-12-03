@@ -44,8 +44,7 @@ class Optimizer:
         self.train_losses = []
         self.test_losses = []
 
-    def step(self, model: Transformer, data: Dataset, device=None) -> None:
-        """Process one training step: handle loss, learning_rate, etc"""
+    def measure_loss(self, model: Transformer, data: Dataset, device=None):
         device = device or self.device
         train_loss = self.loss_func(
             model, data["Train"]["In"], data["Train"]["Label"], device=device
@@ -55,7 +54,11 @@ class Optimizer:
         )
         self.train_losses.append(train_loss.item())
         self.test_losses.append(test_loss.item())
+        return train_loss, test_loss
 
+    def step(self, model: Transformer, data: Dataset, device=None) -> None:
+        """Process one training step: handle loss, learning_rate, etc"""
+        train_loss, _ = self.measure_loss(model=model, data=data, device=device)
         train_loss.backward()
         self.optimizer.step()
         self.scheduler.step()

@@ -36,6 +36,7 @@ class TransformerConfig:
     n_layers: int
     n_vocab: int
     weight_alpha: float
+    attention_style: str = "normal"
 
 
 class Embed(nn.Module):
@@ -48,7 +49,7 @@ class Embed(nn.Module):
         )
 
     def forward(self, x):
-        return self.W_E[x]
+        return self.W_E[x, :]
 
 
 class Unembed(nn.Module):
@@ -77,7 +78,6 @@ class PositionEmbed(nn.Module):
         return x + self.W_pos
 
 
-# Attention
 class Attention(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
@@ -99,7 +99,7 @@ class Attention(nn.Module):
         )
         self.W_O = nn.Parameter(
             cfg.weight_alpha
-            * torch.randn(cfg.d_embed, cfg.d_head * cfg.n_heads)
+            * torch.randn(cfg.n_heads, cfg.d_embed, cfg.d_head)
             / np.sqrt(cfg.d_embed)
         )
         self.register_buffer("mask", torch.tril(torch.ones((cfg.n_ctx, cfg.n_ctx))))
@@ -126,8 +126,58 @@ class Attention(nn.Module):
             )
         )
         z = self.hook_z(torch.einsum("bach,bacC->baCh", v, attn_matrix))
-        z_flat = einops.rearrange(z, "b a c h -> b c (a h)")
-        out = torch.einsum("ef,bcf->bce", self.W_O, z_flat)
+        # z_flat = einops.rearrange(z, "b a c h -> b c (a h)")
+        # out = torch.einsum("ef,bcf->bce", self.W_O, z_flat)
+        out = torch.einsum("aeh,bach->bce", self.W_O, z)
+        return out
+
+
+class EmbeddingAttention(nn.Module):
+    def __init__(self, cfg: TransformerConfig):
+        super().__init__()
+
+        self.W_K = nn.Parameter(
+            cfg.weight_alpha
+            * torch.randn(cfg.n_heads, cfg.d_head, cfg.n_ctx)
+            / np.sqrt(cfg.n_ctx)
+        )
+        self.W_Q = nn.Parameter(
+            cfg.weight_alpha
+            * torch.randn(cfg.n_heads, cfg.d_head, cfg.n_ctx)
+            / np.sqrt(cfg.n_ctx)
+        )
+        self.W_V = nn.Parameter(
+            cfg.weight_alpha
+            * torch.randn(cfg.n_heads, cfg.d_head, cfg.n_ctx)
+            / np.sqrt(cfg.n_ctx)
+        )
+        self.W_O = nn.Parameter(
+            cfg.weight_alpha
+            * torch.randn(cfg.n_ctx, cfg.d_head * cfg.n_heads)
+            / np.sqrt(cfg.n_ctx)
+        )
+        self.d_head = cfg.d_head
+        self.hook_k = HookPoint()
+        self.hook_q = HookPoint()
+        self.hook_v = HookPoint()
+        self.hook_z = HookPoint()
+        self.hook_attn = HookPoint()
+        self.hook_attn_pre = HookPoint()
+
+    def forward(self, x):
+        k = self.hook_k(torch.einsum("ahc,bce->baeh", self.W_K, x))
+        q = self.hook_q(torch.einsum("ahc,bce->baeh", self.W_Q, x))
+        v = self.hook_v(torch.einsum("ahc,bce->baeh", self.W_V, x))
+        attn_scores_pre = torch.einsum("baeh,baEh->baeE", k, q)
+        attn_matrix = self.hook_attn(
+            F.softmax(
+                self.hook_attn_pre(attn_scores_pre / np.sqrt(self.d_head)),
+                dim=-1,
+            )
+        )
+        z = self.hook_z(torch.einsum("baeh,baeE->baEh", v, attn_matrix))
+        z_flat = einops.rearrange(z, "b a e h -> b e (a h)")
+        out = torch.einsum("cf,bef->bce", self.W_O, z_flat)
         return out
 
 
@@ -164,7 +214,10 @@ class MLP(nn.Module):
 class TransformerBlock(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
-        self.attn = Attention(cfg)
+        if cfg.attention_style == "cross":
+            self.attn = EmbeddingAttention(cfg)
+        else:
+            self.attn = Attention(cfg)
         self.hook_attn_out = HookPoint()
         self.hook_resid_pre = HookPoint()
         self.hook_resid_mid = HookPoint()
@@ -182,6 +235,26 @@ class TransformerBlock(nn.Module):
         return x
 
 
+class MixedTransformerBlock(nn.Module):
+    def __init__(self, cfg: TransformerConfig):
+        super().__init__()
+        self.emb_attn = EmbeddingAttention(cfg)
+        self.ctx_attn = Attention(cfg)
+        self.hook_attn_out = HookPoint()
+        self.hook_resid_pre = HookPoint()
+        self.hook_resid_mid = HookPoint()
+        if cfg.d_mlp > 0:
+            self.mlp = MLP(cfg)
+            self.hook_resid_post = HookPoint()
+            self.hook_mlp_out = HookPoint()
+
+    def forward(self, x):
+        x = x + self.ctx_attn(x) + self.emb_attn(x)
+        if hasattr(self, "mlp"):
+            x = self.hook_resid_post(x + self.hook_mlp_out(self.mlp((x))))
+        return x
+
+
 class Transformer(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
@@ -190,9 +263,11 @@ class Transformer(nn.Module):
 
         self.embed = Embed(cfg)
         self.position_embed = PositionEmbed(cfg)
-        self.blocks = nn.ModuleList(
-            [TransformerBlock(cfg) for i in range(cfg.n_layers)]
-        )
+        if cfg.attention_style == "mixed":
+            block = MixedTransformerBlock
+        else:
+            block = TransformerBlock
+        self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_layers)])
         self.unembed = Unembed(cfg)
 
         for name, module in self.named_modules():

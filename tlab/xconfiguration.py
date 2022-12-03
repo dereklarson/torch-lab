@@ -4,6 +4,8 @@ An XConfiguration provides a full picture of every setting for a training run.
 It also provides some convenience methods for loading, saving, etc.
 An Experiment will specify many XConfigurations.
 """
+import glob
+import json
 import pickle
 from dataclasses import fields
 from functools import cached_property
@@ -17,6 +19,7 @@ from prettytable import PrettyTable
 from tlab.data import DataConfig
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.optimize import OptimConfig, Optimizer
+from tlab.utils.util import get_attention_patterns, get_output_patterns
 
 VALID_PARAMS = {
     **DataConfig.__annotations__,
@@ -109,8 +112,19 @@ class XConfiguration:
             table.add_row([f"{note}{param}", self.params[param]])
         print(table)
 
+    def checkpoint_model(self, root: Path, model: Transformer, optim: Optimizer):
+        filepath = root / f"{self.filebase}_mdl_{optim.epoch:0>6d}.pth"
+        save_dict = {
+            "params": self.params,
+            "model": model.state_dict(),
+            "train_loss": optim.train_losses[-1],
+            "test_loss": optim.test_losses[-1],
+            "epoch": optim.epoch,
+        }
+        torch.save(save_dict, filepath)
+
     def save_model(self, root: Path, model: Transformer, optim: Optimizer):
-        filepath = root / f"{self.filebase}_mod.pth"
+        filepath = root / f"{self.filebase}_mdl.pth"
         save_dict = {
             "params": self.params,
             "model": model.state_dict(),
@@ -123,11 +137,43 @@ class XConfiguration:
         torch.save(save_dict, filepath)
 
     def get_model_state(self, root: Path):
-        filepath = root / f"{self.filebase}_mod.pth"
+        filepath = root / f"{self.filebase}_mdl.pth"
         state_dict = torch.load(filepath)
         return state_dict["model"]
+
+    def load_model_checkpoints(self, root: Path, period: int = 100):
+        for checkpoint_file in sorted(glob.glob(f"{root}/{self.filebase}_mdl_*.pth")):
+            state_dict = torch.load(checkpoint_file)
+            yield state_dict
 
     def load_model(self, root: Path):
         model = Transformer(self.model)
         model.load_state_dict(self.get_model_state(root))
         return model
+
+    def dump_json_data(self, src: Path, dest: Path, tag: str = "Default", **kwargs):
+        # First dump the configuration
+        with open(dest / f"{self.filebase}_config.json", "w") as fh:
+            dump_params = {"tag": tag}
+            dump_params.update(self.params)
+            json.dump(dump_params, fh)
+
+        # Then dump the data for each checkpoint as a frame
+        frames = []
+        for params in self.load_model_checkpoints(src):
+            frames.append(
+                {
+                    "epoch": params["epoch"],
+                    "lossTrain": params["train_loss"],
+                    "lossTest": params["test_loss"],
+                    "blocks": [
+                        {
+                            "attention": get_attention_patterns(params),
+                            "output": get_output_patterns(params),
+                            "mlp": [],
+                        }
+                    ],
+                }
+            )
+        with open(dest / f"{self.filebase}_frames.json", "w") as fh:
+            json.dump(frames, fh)

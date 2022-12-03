@@ -1,9 +1,11 @@
 """Grab-bag of methods for visualizing data.
 """
 
+import json
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import einops
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -138,7 +140,9 @@ def plot_ft(mat: torch.Tensor, p: int, **kwargs):
     _kwargs.update(kwargs)
     if len(mat.shape) == 3:
         ft_frames = to_numpy(torch.einsum("fpe,Ep -> feE", mat, basis))
-        px.imshow(ft_frames, animation_frame=0, labels=labels, **_kwargs).show()
+        fig = px.imshow(ft_frames, animation_frame=0, labels=labels, **_kwargs)
+        fig["layout"].pop("updatemenus")
+        fig.show()
     else:
         ft = to_numpy(torch.einsum("pe,Ep -> eE", mat, basis))
         px.imshow(ft, labels=labels, **_kwargs).show()
@@ -147,13 +151,13 @@ def plot_ft(mat: torch.Tensor, p: int, **kwargs):
 def _select_from_exp(exp: Experiment, constraints: Dict[str, int] = None):
     constraints = constraints or {}
     for xcon in exp.configure():
-        if any(xcon.params.get(key) != val for key, val in constraints.items()):
+        if any(xcon.params.get(key) not in val for key, val in constraints.items()):
             continue
         try:
             all_params = xcon.get_model_state(exp.path)
             yield xcon, all_params
-        except:
-            print(f"Error loading {xcon.filebase}")
+        except Exception as exc:
+            print(f"Error loading {xcon.filebase}: {exc}")
             continue
 
 
@@ -162,32 +166,44 @@ def plot_experiment_ft(
     param: str = "embed.W_E",
     constraints: Dict[str, int] = None,
     transpose: bool = False,
+    comb: bool = False,
 ):
     weights = []
     for _, all_params in _select_from_exp(exp, constraints=constraints):
         param_data = all_params[param]
         if transpose:
             param_data = param_data.T
+        if comb:
+            mat = all_params["blocks.0.mlp.W_out"].T @ all_params["unembed.W_U"]
+            param_data = mat.T
         weights.append(param_data)
 
     weight_stack = torch.stack(weights, dim=0)
     plot_ft(weight_stack, exp.defaults.get("value_range"))
 
 
-def plot_tensor_vectors(
-    exp: Experiment,
-    constraints: Dict[str, int] = None,
-    param: str = "embed.W_E",
-    transpose: bool = True,
-):
-    traces, slider_steps = [], []
-    frames = exp.count
-    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
-        param_data = all_params[param]
-        if transpose:
-            param_data = param_data.T
-        cols = param_data.shape[0]
+def _update_layout(fig, **kwargs):
+    for k, v in kwargs.items():
+        try:
+            arg = {k: v}
+            fig.update_layout(**arg)
+        except:
+            logging.warning(f"Skipping invalid update_layout arg: {k}={v}")
+    try:
+        fig["layout"].pop("updatemenus")
+    except:
+        pass
 
+
+def _create_slider(
+    exp: Experiment,
+    cols: int,
+    constraints: Dict[str, int] = None,
+) -> Dict[str, Any]:
+    """Create a slider indexing the different configurations of an experiment."""
+    frames = exp.count
+    slider_steps = []
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
         step = dict(
             method="update",
             label=xcon.repr,
@@ -197,7 +213,30 @@ def plot_tensor_vectors(
             if (cols * (xcon.idx - 1)) <= i < (cols * xcon.idx):
                 step["args"][0]["visible"][i] = True
         slider_steps.append(step)
-        for t_idx, trace in enumerate(param_data, 1):
+
+    slider = dict(
+        active=0,
+        currentvalue={"prefix": "params: "},
+        pad={"t": 50},
+        steps=slider_steps,
+    )
+    return slider
+
+
+def plot_tensor_vectors(
+    exp: Experiment,
+    param: str = "embed.W_E",
+    constraints: Dict[str, int] = None,
+    transpose: bool = True,
+):
+    traces = []
+    cols = 1
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
+        param_data = all_params[param]
+        if transpose:
+            param_data = param_data.T
+        cols = max(cols, param_data.shape[0])
+        for _, trace in enumerate(param_data, 1):
             traces.append(
                 go.Scatter(
                     visible=(xcon.idx == 1),
@@ -211,18 +250,86 @@ def plot_tensor_vectors(
     for idx, trace in enumerate(traces):
         fig.add_trace(trace, 1, (idx % cols) + 1)
 
-    # Create and add slider
-    sliders = [
-        dict(
-            active=0,
-            currentvalue={"prefix": "params: "},
-            pad={"t": 50},
-            steps=slider_steps,
-        )
-    ]
+    slider = _create_slider(exp, cols, constraints=constraints)
     title = f"Tensor '{param}' as row vectors, varying: {list(exp.ranges.keys())}"
-    fig.update_layout(sliders=sliders, title=title)
+    fig.update_layout(sliders=[slider], title=title)
     fig.show()
+
+
+def plot_attention_patterns(
+    exp: Experiment, constraints: Dict[str, int] = None, **kwargs
+):
+    traces = []
+    cols = 1
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
+        cols = max(cols, xcon.model.n_heads)
+        W_E = all_params["embed.W_E"]
+        W_Q = all_params["blocks.0.attn.W_Q"]
+        W_K = all_params["blocks.0.attn.W_K"]
+        QK = torch.einsum("ahe,ahE -> aeE", W_Q, W_K)
+        eQK = torch.einsum("ve,aeE -> avE", W_E, QK)
+        attn = torch.einsum("avE,VE -> avV", eQK, W_E)
+        for _, trace in enumerate(attn, 1):
+            traces.append(go.Heatmap(visible=(xcon.idx == 1), z=to_numpy(trace)))
+
+    fig = make_subplots(1, cols)
+    for idx, trace in enumerate(traces):
+        fig.add_trace(trace, 1, (idx % cols) + 1)
+
+    slider = _create_slider(exp, cols, constraints=constraints)
+    title = f"Attention Pattern, varying: {list(exp.ranges.keys())}"
+    _update_layout(fig, title=title, sliders=[slider], **kwargs)
+    fig.show()
+    return fig
+
+
+def plot_output_patterns(
+    exp: Experiment,
+    constraints: Dict[str, int] = None,
+    include_unembed: bool = True,
+    **kwargs,
+):
+    traces = []
+    cols = 1
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
+        cols = max(cols, xcon.model.n_heads)
+        W_E = all_params["embed.W_E"]
+        W_O = all_params["blocks.0.attn.W_O"]
+        W_V = all_params["blocks.0.attn.W_V"]
+        W_U = all_params["unembed.W_U"]
+        try:
+            OV = torch.einsum("aeh,ahE -> aeE", W_O, W_V)
+        except:
+            # Original dimensions were d_embed, n_heads * d_head, so rearrange
+            expanded = einops.rearrange(W_O, "e (a h) -> a e h")
+            OV = torch.einsum("aeh,ahE -> aeE", expanded, W_V)
+        output = torch.einsum("aeE, vE -> ave", OV, W_E)
+        if include_unembed:
+            output = torch.einsum("Ev, aVE -> avV", W_U, output)
+        for _, trace in enumerate(output, 1):
+            traces.append(go.Heatmap(visible=(xcon.idx == 1), z=to_numpy(trace)))
+
+    fig = make_subplots(1, cols)
+    for idx, trace in enumerate(traces):
+        fig.add_trace(trace, 1, (idx % cols) + 1)
+
+    slider = _create_slider(exp, cols, constraints=constraints)
+    title = f"Attention Pattern, varying: {list(exp.ranges.keys())}"
+    _update_layout(fig, title=title, sliders=[slider], **kwargs)
+    fig.show()
+    return fig
+
+
+def plot_final(
+    exp: Experiment,
+    constraints: Dict[str, int] = None,
+    param: str = "embed.W_E",
+    transpose: bool = True,
+):
+    for xcon, all_params in _select_from_exp(exp, constraints=constraints):
+        param_data = all_params[param]
+        if transpose:
+            param_data = param_data.T
 
 
 def line(x, y=None, hover=None, xaxis="", yaxis="", **kwargs):
