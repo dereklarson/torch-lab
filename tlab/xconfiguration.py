@@ -19,7 +19,12 @@ from prettytable import PrettyTable
 from tlab.data import DataConfig
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.optimize import OptimConfig, Optimizer
-from tlab.utils.util import get_attention_patterns, get_output_patterns
+from tlab.utils.util import (
+    get_attention_patterns,
+    get_mlp,
+    get_output_patterns,
+    to_numpy,
+)
 
 VALID_PARAMS = {
     **DataConfig.__annotations__,
@@ -93,16 +98,20 @@ class XConfiguration:
         return codes
 
     @property
-    def repr(self) -> str:
-        """Convenient descriptor for plots, etc."""
-        return ", ".join(f"{code}: {value}" for code, value in self.codes)
+    def tag(self) -> str:
+        tag = "_".join(f"{code}@{value}" for code, value in self.codes)
+        if tag == "":
+            tag = "default"
+        return tag
 
     @property
     def filebase(self) -> str:
-        tag = "_".join(f"{code}@{value}" for code, value in self.codes)
-        if tag == "":
-            tag = "Default"
-        return f"{self.idx:03}__{tag}"
+        return f"{self.idx:03}__{self.tag}"
+
+    @property
+    def repr(self) -> str:
+        """Convenient descriptor for plots, etc."""
+        return ", ".join(f"{code}: {value}" for code, value in self.codes)
 
     def summary(self) -> None:
         """Display pretty output so a user understands the parameters of the run."""
@@ -151,29 +160,43 @@ class XConfiguration:
         model.load_state_dict(self.get_model_state(root))
         return model
 
-    def dump_json_data(self, src: Path, dest: Path, tag: str = "Default", **kwargs):
+    def dump_json_data(self, src: Path, dest: Path, name: str = "Default", **kwargs):
         # First dump the configuration
-        with open(dest / f"{self.filebase}_config.json", "w") as fh:
-            dump_params = {"tag": tag}
+        with open(dest / f"{name}__{self.tag}__config.json", "w") as fh:
+            dump_params = {
+                "name": name,
+                "vocabulary": [str(i) for i in range(self.params["value_range"])],
+            }
             dump_params.update(self.params)
             json.dump(dump_params, fh)
 
         # Then dump the data for each checkpoint as a frame
         frames = []
         for params in self.load_model_checkpoints(src):
+            has_mlp = self.model.d_mlp > 0
             frames.append(
                 {
                     "epoch": params["epoch"],
                     "lossTrain": params["train_loss"],
                     "lossTest": params["test_loss"],
+                    "embedding": to_numpy(params["model"]["embed.W_E"]).tolist(),
+                    "pos_embed": to_numpy(
+                        params["model"]["position_embed.W_pos"]
+                    ).tolist(),
+                    "unembedding": to_numpy(params["model"]["unembed.W_U"]).tolist(),
                     "blocks": [
-                        {
-                            "attention": get_attention_patterns(params),
-                            "output": get_output_patterns(params),
-                            "mlp": [],
-                        }
+                        _get_block_params(params, i, has_mlp)
+                        for i in range(self.model.n_blocks)
                     ],
                 }
             )
-        with open(dest / f"{self.filebase}_frames.json", "w") as fh:
+        with open(dest / f"{name}__{self.tag}__frames.json", "w") as fh:
             json.dump(frames, fh)
+
+
+def _get_block_params(params, index: int, has_mlp: bool) -> Dict[str, Any]:
+    return {
+        "attention": get_attention_patterns(params, index),
+        "output": get_output_patterns(params, index),
+        "mlp": [] if not has_mlp else get_mlp(params, index),
+    }

@@ -26,6 +26,13 @@ from tlab.models.transformer import Transformer
 from tlab.optimize import Optimizer
 from tlab.utils.util import fourier_basis
 
+STD_OBSERVABLES = [
+    "train_loss",
+    "test_loss",
+    "train_accuracy",
+    "test_accuracy",
+]
+
 
 class Observations:
     def __init__(self) -> None:
@@ -34,6 +41,10 @@ class Observations:
 
         # 'data' reset during run initialization
         self.data: Dict[str, Any] = defaultdict(list)
+
+    def add_standard_observables(self) -> None:
+        for observable in STD_OBSERVABLES:
+            self.add_observable(observable, {})
 
     def add_observable(self, obs_name: str, obs_kwargs: Dict[str, Any]) -> None:
         func = getattr(Observables, obs_name)

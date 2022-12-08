@@ -30,6 +30,7 @@ services:
       - PYTHONPATH=${PYTHON_SITE_PACKAGES}
     volumes:
       - ${HOME}/${REPOS}/${REPO}/tlab/:${PYTHON_SITE_PACKAGES}/tlab/
-      - ${HOME}/${REPOS}/${REPO}/data/:/${APP}/data/
+        # TODO Update this location after folding viz into Tlab 
+      - ${HOME}/${REPOS}/weight_viz/dist/data/:/${APP}/data/
       - ${HOME}/${VOLUMES}/notebooks/:/${APP}/notebooks/
       - ${HOME}/${VOLUMES}/configuration/.jupyter/:/root/.jupyter/

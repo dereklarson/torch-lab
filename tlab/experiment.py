@@ -9,6 +9,7 @@ but critically also reduces error in the experimental setup.
 """
 
 import itertools
+import json
 import logging
 import operator
 import os
@@ -21,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from prettytable import PrettyTable
 
+from tlab.utils.util import StopExecution
 from tlab.xconfiguration import VALID_PARAMS, XConfiguration
 
 
@@ -34,7 +36,7 @@ class Relation:
 class Experiment:
     root_path: Path = Path("experiments")
     exp_file = "experiment.pkl"
-    tag = "temp"
+    temp_tag = "temp"
 
     def __init__(
         self,
@@ -174,17 +176,30 @@ class Experiment:
             variables = tuple(variable_dict.keys())
             yield XConfiguration.from_dict(idx, params, variables)
 
-    def initialize_run(self):
+    def initialize_run(self, force: bool = False):
         """Set up file structure for the experiment."""
         if not os.path.isdir(self.path):
             print(f"Creating {self.path}")
             os.mkdir(self.path)
-        elif self.tag == Experiment.tag:
-            print(f"Recreating temporary directory '{self.tag}'")
+        elif force or self.tag == Experiment.temp_tag:
+            print(f"Recreating directory '{self.tag}'")
             shutil.rmtree(self.path)
             os.mkdir(self.path)
         else:
             logging.warning(f"{self.path} already exists, stopping")
-            return
+            raise StopExecution
 
         self.save()
+
+    def dump_json_data(self, dest: Path, name: str = "Default", **kwargs):
+        # Dump a list of configurations
+        with open(dest / f"{name}.json", "w") as fh:
+            dump_params = {
+                "name": name.title(),
+                "tags": [xcon.tag for xcon in self.configure()],
+            }
+            json.dump(dump_params, fh)
+
+        # Dump the configuration and frame data for each xcon
+        for xcon in self.configure():
+            xcon.dump_json_data(self.path, dest, name)

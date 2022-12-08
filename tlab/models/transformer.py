@@ -33,7 +33,7 @@ class TransformerConfig:
     d_mlp: int
     n_ctx: int
     n_heads: int
-    n_layers: int
+    n_blocks: int
     n_vocab: int
     weight_alpha: float
     attention_style: str = "normal"
@@ -267,7 +267,7 @@ class Transformer(nn.Module):
             block = MixedTransformerBlock
         else:
             block = TransformerBlock
-        self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_layers)])
+        self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_blocks)])
         self.unembed = Unembed(cfg)
 
         for name, module in self.named_modules():

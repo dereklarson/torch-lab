@@ -5,6 +5,11 @@ import numpy as np
 import torch
 
 
+class StopExecution(Exception):
+    def _render_traceback_(self):
+        pass
+
+
 def to_numpy(tensor):
     if type(tensor) == torch.Tensor:
         return tensor.detach().cpu().numpy()
@@ -48,10 +53,10 @@ def fourier_basis(k):
     return torch.stack(fourier_basis, dim=0).to("cuda")
 
 
-def get_attention_patterns(params):
+def get_attention_patterns(params, block_index: int):
     W_E = params["model"]["embed.W_E"]
-    W_Q = params["model"]["blocks.0.attn.W_Q"]
-    W_K = params["model"]["blocks.0.attn.W_K"]
+    W_Q = params["model"][f"blocks.{block_index}.attn.W_Q"]
+    W_K = params["model"][f"blocks.{block_index}.attn.W_K"]
     QK = torch.einsum("ahe,ahE -> aeE", W_Q, W_K)
     eQK = torch.einsum("ve,aeE -> avE", W_E, QK)
     attention = torch.einsum("avE,VE -> avV", eQK, W_E)
@@ -59,13 +64,34 @@ def get_attention_patterns(params):
     return heads
 
 
-def get_output_patterns(params):
+def get_output_patterns(params, block_index: int):
     W_E = params["model"]["embed.W_E"]
     W_U = params["model"]["unembed.W_U"]
-    W_O = params["model"]["blocks.0.attn.W_O"]
-    W_V = params["model"]["blocks.0.attn.W_V"]
+    W_O = params["model"][f"blocks.{block_index}.attn.W_O"]
+    W_V = params["model"][f"blocks.{block_index}.attn.W_V"]
     OV = torch.einsum("aeh,ahE -> aeE", W_O, W_V)
     uOV = torch.einsum("ev,aeE -> avE", W_U, OV)
     output = torch.einsum("avE,VE -> avV", uOV, W_E)
     heads = [to_numpy(row).tolist() for row in output]
     return heads
+
+
+def get_mlp(params, block_index: int):
+    return [
+        {
+            "weights": to_numpy(
+                params["model"][f"blocks.{block_index}.mlp.W_in"]
+            ).tolist(),
+            "biases": to_numpy(
+                params["model"][f"blocks.{block_index}.mlp.b_in"]
+            ).tolist(),
+        },
+        {
+            "weights": to_numpy(
+                params["model"][f"blocks.{block_index}.mlp.W_out"]
+            ).tolist(),
+            "biases": to_numpy(
+                params["model"][f"blocks.{block_index}.mlp.b_out"]
+            ).tolist(),
+        },
+    ]

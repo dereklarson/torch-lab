@@ -14,6 +14,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from tlab.utils.hookpoint import HookPoint
 
 
@@ -24,7 +25,7 @@ class TransformerConfig:
     d_mlp: int
     n_ctx: int
     n_heads: int
-    n_layers: int
+    n_blocks: int
     n_vocab: int
     weight_alpha: float
     sample_count: int = 1
@@ -183,7 +184,7 @@ class TransformerGroup(nn.Module):
         self.embed = EmbedGroup(cfg)
         self.position_embed = PositionEmbedGroup(cfg)
         self.blocks = nn.ModuleList(
-            [TransformerBlockGroup(cfg) for i in range(cfg.n_layers)]
+            [TransformerBlockGroup(cfg) for i in range(cfg.n_blocks)]
         )
         self.unembed = UnembedGroup(cfg)
 
