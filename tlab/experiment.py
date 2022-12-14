@@ -109,6 +109,9 @@ class Experiment:
                     values += ("...",)
                 table.add_row([idx, tag, param, values])
                 tag = ""  # Only print experiment tag once
+            if not exp.ranges:
+                table.add_row([idx, tag, "None", "Default"])
+
         print(table)
         print(f"{exc_ct} folders failed to load")
         return result
