@@ -200,6 +200,7 @@ class Experiment:
             dump_params = {
                 "name": name.title(),
                 "tags": [xcon.tag for xcon in self.configure()],
+                "notes": kwargs.get("desc", ""),
             }
             json.dump(dump_params, fh)
 
