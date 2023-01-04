@@ -53,6 +53,20 @@ def fourier_basis(k):
     return torch.stack(fourier_basis, dim=0).to("cuda")
 
 
+def get_qk(params, block_index: int):
+    W_Q = params["model"][f"blocks.{block_index}.attn.W_Q"]
+    W_K = params["model"][f"blocks.{block_index}.attn.W_K"]
+    QK = torch.einsum("ahe,ahE -> aeE", W_Q, W_K)
+    return to_numpy(QK).tolist()
+
+
+def get_ov(params, block_index: int):
+    W_O = params["model"][f"blocks.{block_index}.attn.W_O"]
+    W_V = params["model"][f"blocks.{block_index}.attn.W_V"]
+    OV = torch.einsum("aeh,ahE -> aeE", W_O, W_V)
+    return to_numpy(OV).tolist()
+
+
 def get_attention_patterns(params, block_index: int):
     W_E = params["model"]["embed.W_E"]
     W_Q = params["model"][f"blocks.{block_index}.attn.W_Q"]

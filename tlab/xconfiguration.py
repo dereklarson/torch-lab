@@ -18,11 +18,14 @@ from prettytable import PrettyTable
 
 from tlab.data import DataConfig
 from tlab.models.transformer import Transformer, TransformerConfig
+from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
 from tlab.utils.util import (
     get_attention_patterns,
     get_mlp,
     get_output_patterns,
+    get_ov,
+    get_qk,
     to_numpy,
 )
 
@@ -121,13 +124,20 @@ class XConfiguration:
             table.add_row([f"{note}{param}", self.params[param]])
         print(table)
 
-    def checkpoint_model(self, root: Path, model: Transformer, optim: Optimizer):
+    def checkpoint_model(
+        self,
+        root: Path,
+        model: Transformer,
+        optim: Optimizer,
+        observations: Observations,
+    ):
         filepath = root / f"{self.filebase}_mdl_{optim.epoch:0>6d}.pth"
         save_dict = {
             "params": self.params,
             "model": model.state_dict(),
             "train_loss": optim.train_losses[-1],
             "test_loss": optim.test_losses[-1],
+            "test_accuracy": observations.data.get("test_accuracy", [0])[-1],
             "epoch": optim.epoch,
         }
         torch.save(save_dict, filepath)
@@ -179,6 +189,7 @@ class XConfiguration:
                     "epoch": params["epoch"],
                     "lossTrain": params["train_loss"],
                     "lossTest": params["test_loss"],
+                    "accuracyTest": params["test_accuracy"],
                     "embedding": to_numpy(params["model"]["embed.W_E"]).tolist(),
                     "pos_embed": to_numpy(
                         params["model"]["position_embed.W_pos"]
@@ -196,6 +207,8 @@ class XConfiguration:
 
 def _get_block_params(params, index: int, has_mlp: bool) -> Dict[str, Any]:
     return {
+        "qk": get_qk(params, index),
+        "ov": get_ov(params, index),
         "attention": get_attention_patterns(params, index),
         "output": get_output_patterns(params, index),
         "mlp": [] if not has_mlp else get_mlp(params, index),
