@@ -37,6 +37,7 @@ class TransformerConfig:
     n_blocks: int
     n_vocab: int
     weight_alpha: float
+    use_position: bool = True
     attention_style: str = "normal"
 
 
@@ -69,11 +70,16 @@ class Unembed(nn.Module):
 class PositionEmbed(nn.Module):
     def __init__(self, cfg: TransformerConfig):
         super().__init__()
-        self.W_pos = nn.Parameter(
-            cfg.weight_alpha
-            * torch.randn(cfg.n_ctx, cfg.d_embed)
-            / np.sqrt(cfg.d_embed)
-        )
+        if cfg.use_position:
+            self.W_pos = nn.Parameter(
+                cfg.weight_alpha
+                * torch.randn(cfg.n_ctx, cfg.d_embed)
+                / np.sqrt(cfg.d_embed)
+            )
+        else:
+            self.W_pos = nn.Parameter(
+                torch.zeros(cfg.n_ctx, cfg.d_embed), requires_grad=False
+            )
 
     def forward(self, x):
         return x + self.W_pos
@@ -193,6 +199,7 @@ class Transformer(nn.Module):
 
         self.embed = Embed(cfg)
         self.position_embed = PositionEmbed(cfg)
+
         # TODO Consider allowing variants to the standard TransformerBlock
         block = TransformerBlock
 
