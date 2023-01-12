@@ -16,7 +16,7 @@ import parse
 import torch
 from prettytable import PrettyTable
 
-from tlab.data import DataConfig
+from tlab.data import DataConfig, create_vocabulary
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
@@ -46,10 +46,12 @@ class XConfiguration:
         variables: Tuple[str] = tuple(),
     ) -> None:
         self.idx: int = idx
+        # TODO Allow a set of DataConfigs to specify composite datasets
         self.data: DataConfig = data_cfg
         self.model: TransformerConfig = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
+        self.vocabulary: List[str] = create_vocabulary([data_cfg])
 
     @classmethod
     def from_dict(
@@ -175,7 +177,7 @@ class XConfiguration:
         with open(dest / f"{name}__{self.tag}__config.json", "w") as fh:
             dump_params = {
                 "name": name,
-                "vocabulary": [str(i) for i in range(self.params["value_range"])],
+                "vocabulary": self.vocabulary,
             }
             dump_params.update(self.params)
             json.dump(dump_params, fh)
