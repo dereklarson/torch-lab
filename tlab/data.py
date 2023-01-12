@@ -88,9 +88,9 @@ def _get_operation(cfg: DataConfig):
     if cfg.operation == "add":
         operation = lambda x: sum(x) % cfg.value_range
     elif cfg.operation == "sub":
-        operation = lambda x: (x[0] - x[1]) % cfg.value_range
+        operation = lambda x: (x[0] - sum(x[1:])) % cfg.value_range
     elif cfg.operation == "mul":
-        operation = lambda x: (x[0] * x[1]) % cfg.value_range
+        operation = lambda x: np.prod(x) % cfg.value_range
     elif cfg.operation == "par":
         operation = lambda x: sum(x) % 2
     elif cfg.operation == "max":
