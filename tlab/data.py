@@ -1,7 +1,7 @@
 """Methods for generating synthetic data.
 """
 import itertools
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple, TypedDict
 
 import numpy as np
@@ -28,6 +28,20 @@ class DataConfig:
     base: Optional[int] = None  # Base of symbols, e.g. base 16 is hexadecimal.
     # 'base' will default to 'value_range' if not set
     use_operators: bool = False  # Whether to include the operator tokens
+    range_dict: Dict[str, Tuple] = None  # Option to broadcast to multiple configs
+
+
+def _expand_params(cfg: DataConfig) -> List[DataConfig]:
+    if not cfg.range_dict:
+        return [cfg]
+    assert len(cfg.range_dict) == 1, "Only single ranges in DataConfig for now"
+    cfgs = []
+    for key, val_range in cfg.range_dict.items():
+        for val in val_range:
+            base = asdict(cfg)
+            base[key] = val
+            cfgs.append(DataConfig(**base))
+    return cfgs
 
 
 op_map = {
@@ -38,7 +52,8 @@ op_map = {
 }
 
 
-def create_vocabulary(cfgs: List[DataConfig], **kwargs) -> List[str]:
+def create_vocabulary(main_cfg: DataConfig, **kwargs) -> List[str]:
+    cfgs = _expand_params(main_cfg)
     bases = {cfg.base or cfg.value_range for cfg in cfgs}
     assert len(bases) == 1, "DataConfigs have unequal bases"
     base = bases.pop()
@@ -53,7 +68,8 @@ def create_vocabulary(cfgs: List[DataConfig], **kwargs) -> List[str]:
     return vocab
 
 
-def generate_data(cfgs: List[DataConfig], vocabulary: List[str], **kwargs):
+def generate_data(main_cfg: DataConfig, vocabulary: List[str], **kwargs):
+    cfgs = _expand_params(main_cfg)
     data = {
         "Train": {"In": [], "Label": []},
         "Test": {"In": [], "Label": []},

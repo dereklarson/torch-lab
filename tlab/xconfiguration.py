@@ -51,7 +51,7 @@ class XConfiguration:
         self.model: TransformerConfig = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
-        self.vocabulary: List[str] = create_vocabulary([data_cfg])
+        self.vocabulary: List[str] = create_vocabulary(data_cfg)
 
     @classmethod
     def from_dict(
