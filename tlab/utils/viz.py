@@ -116,7 +116,10 @@ def group_plot(
             fig.add_trace(_scatter(x, np.array(obs_dict[param]), name=param, **params))
         if len(fields) > 1:
             for param in fields[1]:
-                name = param.split(".")[-1]
+                if "comp_wnorm" in param:
+                    name = param.split(".")[-1]
+                else:
+                    name = param
                 fig.add_trace(
                     _scatter(x, np.array(obs_dict[param]), name=name, **params),
                     secondary_y=True,
