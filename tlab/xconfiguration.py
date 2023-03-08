@@ -12,11 +12,13 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import numpy as np
 import parse
 import torch
 from prettytable import PrettyTable
 
 from tlab.data import DataConfig, create_vocabulary
+from tlab.models.embed_mlp import MLPConfig
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
@@ -29,11 +31,8 @@ from tlab.utils.util import (
     to_numpy,
 )
 
-VALID_PARAMS = {
-    **DataConfig.__annotations__,
-    **TransformerConfig.__annotations__,
-    **OptimConfig.__annotations__,
-}
+# TODO Define the parent class for configs
+ModelConfig = Any
 
 
 class XConfiguration:
@@ -41,27 +40,60 @@ class XConfiguration:
         self,
         idx: int,
         data_cfg: DataConfig,
-        model_cfg: TransformerConfig,
+        model_cfg: ModelConfig,
         optim_cfg: OptimConfig,
         variables: Tuple[str] = tuple(),
     ) -> None:
         self.idx: int = idx
+
+        self.init_seeds(data_cfg, model_cfg)
+
         # TODO Allow a set of DataConfigs to specify composite datasets
         self.data: DataConfig = data_cfg
-        self.model: TransformerConfig = model_cfg
+        self.model: ModelConfig = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
         self.vocabulary: List[str] = create_vocabulary(data_cfg)
 
+    def init_seeds(self, data_cfg: DataConfig, model_cfg: TransformerConfig) -> None:
+        """Generate new random seeds for Numpy and PyTorch if not specified."""
+        if data_cfg.data_seed == 0:
+            rng = np.random.default_rng()
+            data_cfg.data_seed = rng.integers(1, 0xFFFFFFFFFFFF)
+        if model_cfg.torch_seed == 0:
+            rng = np.random.default_rng()
+            model_cfg.torch_seed = rng.integers(1, 0xFFFFFFFFFFFF)
+
+    @staticmethod
+    def _get_arch_config(arch: str):
+        arch_config = TransformerConfig
+        if arch == "MLP":
+            arch_config = MLPConfig
+        return arch_config
+
+    @staticmethod
+    def valid_params(arch: str):
+        return {
+            **DataConfig.__annotations__,
+            **XConfiguration._get_arch_config(arch).__annotations__,
+            **OptimConfig.__annotations__,
+        }
+
     @classmethod
     def from_dict(
-        cls, idx: int, conf_dict: Dict[str, Any], variables: Tuple[str] = tuple()
+        cls,
+        idx: int,
+        arch: str,
+        conf_dict: Dict[str, Any],
+        variables: Tuple[str] = tuple(),
     ) -> "XConfiguration":
         """Return an XConfiguration from an index and parameter dictionary"""
-        if "seed" not in conf_dict:
-            conf_dict["seed"] = idx
         conf_args = []
-        for config_class in DataConfig, TransformerConfig, OptimConfig:
+        for config_class in (
+            DataConfig,
+            XConfiguration._get_arch_config(arch),
+            OptimConfig,
+        ):
             common_param_set = (
                 set(f.name for f in fields(config_class)) & conf_dict.keys()
             )

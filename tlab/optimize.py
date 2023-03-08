@@ -18,6 +18,7 @@ class OptimConfig:
     weight_decay: float = 1.0
     n_epochs: int = 10000
     fixed_wnorm: bool = False  # Rescale weights after each update so norm is fixed
+    manual_decay: float = 0.0
 
 
 class Optimizer:
@@ -40,17 +41,18 @@ class Optimizer:
         )
 
         self.epoch = 0
-        self.start_norm = model.wnorm
         self.train_losses = []
         self.test_losses = []
 
-    def measure_loss(self, model: Transformer, data: Dataset, device=None):
+    def measure_loss(self, model: Transformer, data, device=None):
         device = device or self.device
+        train_logits = model(data["Train"]["In"])
         train_loss = self.loss_func(
-            model, data["Train"]["In"], data["Train"]["Label"], device=device
+            train_logits, data["Train"]["Label"][:, None], device=device
         )
+        test_logits = model(data["Test"]["In"])
         test_loss = self.loss_func(
-            model, data["Test"]["In"], data["Test"]["Label"], device=device
+            test_logits, data["Test"]["Label"][:, None], device=device
         )
         self.train_losses.append(train_loss.item())
         self.test_losses.append(test_loss.item())
@@ -64,11 +66,12 @@ class Optimizer:
         self.scheduler.step()
         self.optimizer.zero_grad()
 
-        if self.config.fixed_wnorm:
-            coeff = self.start_norm / model.wnorm
+        if self.config.manual_decay:
             with torch.no_grad():
                 for param in model.parameters():
-                    param *= coeff
+                    param -= (
+                        self.config.learning_rate * self.config.manual_decay * param
+                    )
 
         self.epoch += 1
 
@@ -87,10 +90,8 @@ def gpu_mem() -> float:
     return torch.cuda.memory_allocated() / 1e9
 
 
-def cross_entropy(model, inputs: DataDiv, labels: DataDiv, device="cuda"):
-    logits = model(inputs)[:, -1]
+def cross_entropy(logits: torch.Tensor, labels: torch.Tensor, device="cuda"):
     logprobs = F.log_softmax(logits.to(torch.float64), dim=-1)
-    label_tensor = torch.tensor(labels).to(device)
-    prediction_logprobs = torch.gather(logprobs, index=label_tensor[:, None], dim=-1)
+    prediction_logprobs = torch.gather(logprobs, index=labels, dim=-1)
     loss = -torch.mean(prediction_logprobs)
     return loss

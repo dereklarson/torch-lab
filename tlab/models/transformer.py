@@ -36,9 +36,11 @@ class TransformerConfig:
     n_heads: int
     n_blocks: int
     n_vocab: int
-    weight_alpha: float
+    p_dropout: float = 0.0
+    weight_alpha: float = 1.0
     use_position: bool = True
     attention_style: str = "normal"
+    torch_seed: int = 0
 
 
 class Embed(nn.Module):
@@ -118,6 +120,8 @@ class Attention(nn.Module):
         self.hook_attn = HookPoint()
         self.hook_attn_pre = HookPoint()
 
+        self.dropout = nn.Dropout(p=cfg.p_dropout)
+
     def forward(self, x):
         k = self.hook_k(torch.einsum("ahe,bce->bach", self.W_K, x))
         q = self.hook_q(torch.einsum("ahe,bce->bach", self.W_Q, x))
@@ -134,6 +138,7 @@ class Attention(nn.Module):
         )
         z = self.hook_z(torch.einsum("bacC,bach->baCh", attn_matrix, v))
         out = torch.einsum("aeh,bach->bce", self.W_O, z)
+        out = self.dropout(out)
         return out
 
 
@@ -197,6 +202,8 @@ class Transformer(nn.Module):
         self.config = cfg
         self.cache = {}
 
+        torch.manual_seed(cfg.torch_seed)
+
         self.embed = Embed(cfg)
         self.position_embed = PositionEmbed(cfg)
 
@@ -216,7 +223,8 @@ class Transformer(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.unembed(x)
-        return x
+        # Use the last position of context for the prediction
+        return x[:, -1]
 
     def hook_points(self):
         return [module for name, module in self.named_modules() if "hook" in name]

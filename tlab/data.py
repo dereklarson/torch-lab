@@ -22,11 +22,11 @@ class DataConfig:
     value_range: int  # Range of integers involved in the arithmetic
     operation: str  # Numerical operation to use for label calculation
     training_fraction: float  # Amount of generated data put into training set
-    seed: int  # Numpy RNG seed for generating data (separate from PyTorch)
+    data_seed: int  # Numpy RNG seed for generating data (separate from PyTorch)
     dist_style: str = "normal"  # Keyword to trigger different distributions of data
     value_count: int = 2  # How many input values (i.e. Transformer context)
-    base: Optional[int] = None  # Base of symbols, e.g. base 16 is hexadecimal.
     # 'base' will default to 'value_range' if not set
+    base: Optional[int] = None  # Base of symbols, e.g. base 16 is hexadecimal.
     use_operators: bool = False  # Whether to include the operator tokens
     range_dict: Dict[str, Tuple] = None  # Option to broadcast to multiple configs
 
@@ -77,7 +77,7 @@ def generate_data(main_cfg: DataConfig, vocabulary: List[str], **kwargs):
     use_operators = any(cfg.use_operators for cfg in cfgs)
 
     for cfg in cfgs:
-        np.random.seed(kwargs.get("seed") or cfg.seed)
+        np.random.seed(kwargs.get("data_seed") or cfg.data_seed)
         generator = _asymm if cfg.dist_style == "asymm" else _uniform
 
         train, test = generator(cfg)
