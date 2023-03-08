@@ -17,6 +17,30 @@ from tlab.observation import Observations
 from tlab.optimize import Optimizer
 from tlab.utils.util import fourier_basis, to_numpy
 
+DEF_PLOTS = ["train_loss", "test_loss"]
+
+
+def live_plot(**kwargs):
+    fig = go.FigureWidget()
+    _layout(fig, title="Live Training", size=(None, 400), log_x=True, log_y=True)
+    return fig
+
+
+def add_plots(fig: go.Figure, tag: str, plots=DEF_PLOTS):
+    if not fig:
+        return
+    args = {"group": tag, "thinning": 0}
+    for param in plots:
+        fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
+
+
+def update_plots(fig, obs: Observations, group_idx: int, plots=DEF_PLOTS):
+    N = len(plots)
+    idx = N * group_idx
+    for param in plots:
+        fig.data[idx].y = obs.data[param]
+        idx += 1
+
 
 def _scatter(
     x: np.ndarray,
