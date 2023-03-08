@@ -22,7 +22,7 @@ DEF_PLOTS = ["train_loss", "test_loss"]
 
 def live_plot(**kwargs):
     fig = go.FigureWidget()
-    _layout(fig, title="Live Training", size=(None, 400), log_x=True, log_y=True)
+    _layout(fig, title="Live Training", size=(None, 600), log_x=False, log_y=True)
     return fig
 
 

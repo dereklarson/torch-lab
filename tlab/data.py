@@ -5,16 +5,14 @@ from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple, TypedDict
 
 import numpy as np
+import torch
 
-
-class DataDiv(TypedDict):
-    In: List[Tuple[int, ...]]
-    Label: List[int]
-
-
-class Dataset(TypedDict):
-    Train: DataDiv
-    Test: DataDiv
+OPERATION_MAP = {
+    "add": "+",
+    "par": "+",
+    "sub": "-",
+    "mul": "*",
+}
 
 
 @dataclass
@@ -31,73 +29,91 @@ class DataConfig:
     range_dict: Dict[str, Tuple] = None  # Option to broadcast to multiple configs
 
 
-def _expand_params(cfg: DataConfig) -> List[DataConfig]:
-    if not cfg.range_dict:
-        return [cfg]
-    assert len(cfg.range_dict) == 1, "Only single ranges in DataConfig for now"
-    cfgs = []
-    for key, val_range in cfg.range_dict.items():
-        for val in val_range:
-            base = asdict(cfg)
-            base[key] = val
-            cfgs.append(DataConfig(**base))
-    return cfgs
+class DataDiv:
+    def __init__(
+        self, inputs: List[Tuple[int, ...]], labels: List[int], to_cuda: bool = True
+    ) -> None:
+        self.inputs = inputs
+        self.labels = labels
+        if to_cuda:
+            self.inputs = torch.tensor(inputs).to("cuda")
+            self.labels = torch.tensor(labels).to("cuda")
 
 
-op_map = {
-    "add": "+",
-    "par": "+",
-    "sub": "-",
-    "mul": "*",
-}
+class Dataset:
+    def __init__(
+        self,
+        cfgs: List[DataConfig],
+        vocabulary: List[str],
+        train: DataDiv,
+        test: DataDiv,
+    ) -> None:
+        self.cfgs = cfgs
+        self.vocabulary = vocabulary
+        self.train = train
+        self.test = test
 
+    @classmethod
+    def from_config(cls, main_cfg: DataConfig, to_cuda: bool = True) -> "Dataset":
+        cfgs = cls._expand_params(main_cfg)
+        vocabulary = cls.create_vocabulary(main_cfg)
+        use_operators = any(cfg.use_operators for cfg in cfgs)
 
-def create_vocabulary(main_cfg: DataConfig, **kwargs) -> List[str]:
-    cfgs = _expand_params(main_cfg)
-    bases = {cfg.base or cfg.value_range for cfg in cfgs}
-    assert len(bases) == 1, "DataConfigs have unequal bases"
-    base = bases.pop()
-
-    vocab = list(map(str, range(base)))
-
-    if any(cfg.use_operators for cfg in cfgs):
+        train_inputs, train_labels = [], []
+        test_inputs, test_labels = [], []
+        np.random.seed(main_cfg.data_seed)
         for cfg in cfgs:
-            vocab.append(op_map.get(cfg.operation, "XX"))
-        vocab.append("=")
+            generator = _asymm if cfg.dist_style == "asymm" else _uniform
+            curr_train_in, curr_test_in = generator(cfg)
 
-    return vocab
+            # Apply label first, which is easier before inserting operator tokens
+            operation = _get_operation(cfg)
+            train_labels.extend(np.apply_along_axis(operation, 1, curr_train_in))
+            test_labels.extend(np.apply_along_axis(operation, 1, curr_test_in))
+            if use_operators:
+                op_token_idx = vocabulary.index(OPERATION_MAP.get(cfg.operation, "XX"))
+                _insert_op(curr_train_in, op_token_idx)
+                _insert_op(curr_test_in, op_token_idx)
+            train_inputs.extend(curr_train_in)
+            test_inputs.extend(curr_test_in)
 
-
-def generate_data(main_cfg: DataConfig, vocabulary: List[str], **kwargs):
-    cfgs = _expand_params(main_cfg)
-    data = {
-        "Train": {"In": [], "Label": []},
-        "Test": {"In": [], "Label": []},
-    }
-    use_operators = any(cfg.use_operators for cfg in cfgs)
-
-    for cfg in cfgs:
-        np.random.seed(kwargs.get("data_seed") or cfg.data_seed)
-        generator = _asymm if cfg.dist_style == "asymm" else _uniform
-
-        train, test = generator(cfg)
-        # Apply label first, which is easier before inserting operator tokens
-        operation = _get_operation(cfg)
-        data["Train"]["Label"].extend(np.apply_along_axis(operation, 1, train))
-        data["Test"]["Label"].extend(np.apply_along_axis(operation, 1, test))
         if use_operators:
-            op_token_idx = vocabulary.index(op_map.get(cfg.operation, "XX"))
-            _insert_op(train, op_token_idx)
-            _insert_op(test, op_token_idx)
-        data["Train"]["In"].extend(train)
-        data["Test"]["In"].extend(test)
+            eq_token_idx = vocabulary.index("=")
+            _append_eq(train_inputs, eq_token_idx)
+            _append_eq(test_inputs, eq_token_idx)
 
-    if use_operators:
-        eq_token_idx = vocabulary.index("=")
-        _append_eq(data["Train"]["In"], eq_token_idx)
-        _append_eq(data["Test"]["In"], eq_token_idx)
+        train = DataDiv(train_inputs, train_labels, to_cuda)
+        test = DataDiv(test_inputs, test_labels, to_cuda)
+        return Dataset(cfgs, vocabulary, train, test)
 
-    return data
+    @classmethod
+    def _expand_params(cls, cfg: DataConfig) -> List[DataConfig]:
+        if not cfg.range_dict:
+            return [cfg]
+        assert len(cfg.range_dict) == 1, "Only single ranges in DataConfig for now"
+        cfgs = []
+        for key, val_range in cfg.range_dict.items():
+            for val in val_range:
+                base = asdict(cfg)
+                base[key] = val
+                cfgs.append(DataConfig(**base))
+        return cfgs
+
+    @classmethod
+    def create_vocabulary(cls, main_cfg: DataConfig, **kwargs) -> List[str]:
+        cfgs = cls._expand_params(main_cfg)
+        bases = {cfg.base or cfg.value_range for cfg in cfgs}
+        assert len(bases) == 1, "DataConfigs have unequal bases"
+        base = bases.pop()
+
+        vocab = list(map(str, range(base)))
+
+        if any(cfg.use_operators for cfg in cfgs):
+            for cfg in cfgs:
+                vocab.append(OPERATION_MAP.get(cfg.operation, "XX"))
+            vocab.append("=")
+
+        return vocab
 
 
 def _get_operation(cfg: DataConfig):

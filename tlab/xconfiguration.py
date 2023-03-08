@@ -17,7 +17,7 @@ import parse
 import torch
 from prettytable import PrettyTable
 
-from tlab.data import DataConfig, create_vocabulary
+from tlab.data import DataConfig, Dataset
 from tlab.models.embed_mlp import MLPConfig
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.observation import Observations
@@ -53,7 +53,6 @@ class XConfiguration:
         self.model: ModelConfig = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
-        self.vocabulary: List[str] = create_vocabulary(data_cfg)
 
     def init_seeds(self, data_cfg: DataConfig, model_cfg: TransformerConfig) -> None:
         """Generate new random seeds for Numpy and PyTorch if not specified."""
@@ -204,12 +203,14 @@ class XConfiguration:
         model.load_state_dict(self.get_model_state(root))
         return model
 
-    def dump_json_data(self, src: Path, dest: Path, name: str = "Default", **kwargs):
+    def dump_json_data(
+        self, src: Path, dest: Path, dataset: Dataset, name: str = "Default", **kwargs
+    ):
         # First dump the configuration
         with open(dest / f"{name}__{self.tag}__config.json", "w") as fh:
             dump_params = {
                 "name": name,
-                "vocabulary": self.vocabulary,
+                "vocabulary": dataset.vocabulary,
             }
             dump_params.update(self.params)
             json.dump(dump_params, fh)

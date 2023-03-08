@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from tlab.data import DataDiv, Dataset
+from tlab.data import Dataset
 from tlab.models.transformer import Transformer
 
 
@@ -44,15 +44,15 @@ class Optimizer:
         self.train_losses = []
         self.test_losses = []
 
-    def measure_loss(self, model: Transformer, data, device=None):
+    def measure_loss(self, model: Transformer, data: Dataset, device=None):
         device = device or self.device
-        train_logits = model(data["Train"]["In"])
+        train_logits = model(data.train.inputs)
         train_loss = self.loss_func(
-            train_logits, data["Train"]["Label"][:, None], device=device
+            train_logits, data.train.labels[:, None], device=device
         )
-        test_logits = model(data["Test"]["In"])
+        test_logits = model(data.test.inputs)
         test_loss = self.loss_func(
-            test_logits, data["Test"]["Label"][:, None], device=device
+            test_logits, data.test.labels[:, None], device=device
         )
         self.train_losses.append(train_loss.item())
         self.test_losses.append(test_loss.item())

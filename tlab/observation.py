@@ -126,13 +126,9 @@ class Observations:
 
 
 def _accuracy(model: Transformer, data: DataDiv, device="cuda"):
-    inputs = data["In"]
-    labels = data["Label"]
-
-    logits = model(inputs)
+    logits = model(data.inputs)
     _, predictions = torch.max(logits.to(torch.float64), dim=-1)
-    label_tensor = torch.tensor(labels).to(device)
-    accuracy = (predictions == label_tensor).sum().item() / label_tensor.numel()
+    accuracy = (predictions == data.labels).sum().item() / data.labels.numel()
     return accuracy
 
 
@@ -159,12 +155,16 @@ class Observables:
         return optim.test_losses[-1]
 
     @staticmethod
-    def train_accuracy(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
-        return _accuracy(model, data["Train"], device=kwargs.get("device", "cuda"))
+    def train_accuracy(
+        model: Transformer, optim: Optimizer, data: Dataset, **kwargs
+    ) -> float:
+        return _accuracy(model, data.train, device=kwargs.get("device", "cuda"))
 
     @staticmethod
-    def test_accuracy(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
-        return _accuracy(model, data["Test"], device=kwargs.get("device", "cuda"))
+    def test_accuracy(
+        model: Transformer, optim: Optimizer, data: Dataset, **kwargs
+    ) -> float:
+        return _accuracy(model, data.test, device=kwargs.get("device", "cuda"))
 
     @staticmethod
     def embed_g1(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
