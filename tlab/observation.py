@@ -56,11 +56,21 @@ class Observations:
                 self._obs_funcs[obs_name] = functools.partial(
                     func, **{arg: obs_kwargs[arg]}
                 )
-            if arg == "name":
+            elif arg == "name":
                 values = obs_kwargs[arg]
                 for val in values:
                     fkey = f"{obs_name}_{val}"
                     self._obs_funcs[fkey] = functools.partial(func, **{arg: val})
+            elif arg == "matrix_elements":
+                rows, cols = obs_kwargs[arg]
+                for r in range(rows):
+                    for c in range(cols):
+                        fkey = f"{obs_name}_{r}.{c}"
+                        self._obs_funcs[fkey] = functools.partial(func, row=r, col=c)
+            else:
+                logging.warning(
+                    f"Unsupported kwargs for {obs_name} observation: {obs_kwargs}"
+                )
         else:
             logging.warning(f"Too many kwargs for {obs_name} observation: {obs_kwargs}")
 
@@ -119,7 +129,7 @@ def _accuracy(model: Transformer, data: DataDiv, device="cuda"):
     inputs = data["In"]
     labels = data["Label"]
 
-    logits = model(inputs)[:, -1]
+    logits = model(inputs)
     _, predictions = torch.max(logits.to(torch.float64), dim=-1)
     label_tensor = torch.tensor(labels).to(device)
     accuracy = (predictions == label_tensor).sum().item() / label_tensor.numel()
@@ -155,6 +165,22 @@ class Observables:
     @staticmethod
     def test_accuracy(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
         return _accuracy(model, data["Test"], device=kwargs.get("device", "cuda"))
+
+    @staticmethod
+    def embed_g1(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
+        # Get the param-wise moving exponential average of the gradient squared
+        embed_g2 = optim.optimizer.state_dict()["state"][0]["exp_avg"]
+        token_idx: str = kwargs.get("row", 0)
+        embed_idx: str = kwargs.get("col", 0)
+        return abs(float(embed_g2[token_idx, embed_idx].to("cpu")))
+
+    @staticmethod
+    def embed_g2(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
+        # Get the param-wise moving exponential average of the gradient squared
+        embed_g2 = optim.optimizer.state_dict()["state"][0]["exp_avg_sq"]
+        token_idx: str = kwargs.get("row", 0)
+        embed_idx: str = kwargs.get("col", 0)
+        return float(embed_g2[token_idx, embed_idx].to("cpu"))
 
     @staticmethod
     def weight_norm(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
