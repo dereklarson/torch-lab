@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Tuple, TypedDict
 import numpy as np
 import torch
 
+from tlab.utils.util import to_numpy
+
 OPERATION_MAP = {
     "add": "+",
     "par": "+",
@@ -39,6 +41,15 @@ class DataDiv:
             self.inputs = torch.tensor(inputs).to("cuda")
             self.labels = torch.tensor(labels).to("cuda")
 
+    def __len__(self):
+        return len(self.inputs)
+
+    def head(self, n: int = 10) -> List[Tuple]:
+        output = []
+        for idx, row in enumerate(self.inputs[:n]):
+            output.append((to_numpy(row), int(self.labels[idx])))
+        return output
+
 
 class Dataset:
     def __init__(
@@ -52,6 +63,14 @@ class Dataset:
         self.vocabulary = vocabulary
         self.train = train
         self.test = test
+
+    def stats(self) -> None:
+        print(f"{len(self.train)} training examples, {len(self.test)} test examples")
+
+    def head(self, n: int = 10, subset: str = "train") -> None:
+        for input, label in getattr(self, subset).head(n):
+            in_str = " ".join([self.vocabulary[t] for t in input])
+            print(f"{in_str} -> {self.vocabulary[label]}")
 
     @classmethod
     def from_config(cls, main_cfg: DataConfig, to_cuda: bool = True) -> "Dataset":
@@ -159,8 +178,8 @@ def _uniform(cfg: DataConfig) -> Tuple[List[List[int]], List[List[int]]]:
 def _asymm(cfg: DataConfig) -> Tuple[List, List]:
     """Return all pairs of integers (i, j) up to a maximum. Train group has all j >= i."""
     assert cfg.value_count == 2, f"Can't use asymm setting for value_count != 2"
-    train = [(i, j) for i in range(cfg.value_range) for j in range(i, cfg.value_range)]
-    test = [(i, j) for i in range(cfg.value_range) for j in range(0, i)]
+    train = [[i, j] for i in range(cfg.value_range) for j in range(i, cfg.value_range)]
+    test = [[i, j] for i in range(cfg.value_range) for j in range(0, i)]
     np.random.shuffle(test)
     # Determine how much of the j < i set we'll add to the train set
     div = int(cfg.training_fraction * len(test))
