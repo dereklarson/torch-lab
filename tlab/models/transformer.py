@@ -24,11 +24,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tlab.models.beta_components import EmbeddingAttention
+from tlab.models.lab_model import LabModel, ModelConfig
 from tlab.utils.hookpoint import HookPoint
 
 
 @dataclass
-class TransformerConfig:
+class TransformerConfig(ModelConfig):
     d_embed: int
     d_head: int
     d_mlp: int
@@ -40,7 +41,6 @@ class TransformerConfig:
     weight_alpha: float = 1.0
     use_position: bool = True
     attention_style: str = "normal"
-    torch_seed: int = 0
 
 
 class Embed(nn.Module):
@@ -196,13 +196,9 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class Transformer(nn.Module):
+class Transformer(LabModel):
     def __init__(self, cfg: TransformerConfig):
-        super().__init__()
-        self.config = cfg
-        self.cache = {}
-
-        torch.manual_seed(cfg.torch_seed)
+        super().__init__(cfg)
 
         self.embed = Embed(cfg)
         self.position_embed = PositionEmbed(cfg)
@@ -213,9 +209,7 @@ class Transformer(nn.Module):
         self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_blocks)])
         self.unembed = Unembed(cfg)
 
-        for name, module in self.named_modules():
-            if type(module) == HookPoint:
-                module.give_name(name)
+        self._init_hooks()
 
     def forward(self, x):
         x = self.embed(x)
@@ -225,36 +219,3 @@ class Transformer(nn.Module):
         x = self.unembed(x)
         # Use the last position of context for the prediction
         return x[:, -1]
-
-    def hook_points(self):
-        return [module for name, module in self.named_modules() if "hook" in name]
-
-    def remove_all_hooks(self):
-        for hp in self.hook_points():
-            hp.remove_hooks("fwd")
-            hp.remove_hooks("bwd")
-
-    @property
-    def wnorm(self) -> float:
-        return float(
-            torch.linalg.norm(
-                torch.concat([par.flatten() for par in self.parameters()])
-            ).to("cpu")
-        )
-
-    @property
-    def n_params(self) -> int:
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-    def cache_all(self, cache, incl_bwd=False):
-        # Caches all activations wrapped in a HookPoint
-        def save_hook(tensor, name):
-            cache[name] = tensor.detach()
-
-        def save_hook_back(tensor, name):
-            cache[name + "_grad"] = tensor[0].detach()
-
-        for hp in self.hook_points():
-            hp.add_hook(save_hook, "fwd")
-            if incl_bwd:
-                hp.add_hook(save_hook_back, "bwd")

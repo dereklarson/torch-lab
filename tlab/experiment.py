@@ -18,10 +18,11 @@ import shutil
 from dataclasses import dataclass
 from glob import glob
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from prettytable import PrettyTable
 
+from tlab.models.lab_model import ModelConfig
 from tlab.utils.util import StopExecution
 from tlab.xconfiguration import XConfiguration
 
@@ -40,15 +41,15 @@ class Experiment:
 
     def __init__(
         self,
-        arch: str,
+        model_config_class: Type[ModelConfig],
         tag: Optional[str] = None,
         defaults: Optional[Dict[str, float]] = None,
     ) -> None:
-        self.arch = arch
+        self.model_config_class = model_config_class
         self.tag = tag
         self.defaults = defaults or {}
 
-        self.valid_params = XConfiguration.valid_params(arch)
+        self.valid_params = XConfiguration.valid_params(model_config_class)
         for key in self.defaults:
             assert key in self.valid_params.keys(), f"{key} is an invalid parameter"
 
@@ -190,7 +191,9 @@ class Experiment:
             idx += 1
             params = self._get_params(variable_dict)
             variables = tuple(variable_dict.keys())
-            yield XConfiguration.from_dict(idx, self.arch, params, variables)
+            yield XConfiguration.from_dict(
+                idx, self.model_config_class, params, variables
+            )
 
     def initialize_run(self, force: bool = False):
         """Set up file structure for the experiment."""

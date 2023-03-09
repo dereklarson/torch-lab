@@ -10,7 +10,7 @@ import pickle
 from dataclasses import fields
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Type, get_type_hints
 
 import numpy as np
 import parse
@@ -19,6 +19,7 @@ from prettytable import PrettyTable
 
 from tlab.data import DataConfig, Dataset
 from tlab.models.embed_mlp import MLPConfig
+from tlab.models.lab_model import ModelConfig
 from tlab.models.transformer import Transformer, TransformerConfig
 from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
@@ -30,9 +31,6 @@ from tlab.utils.util import (
     get_qk,
     to_numpy,
 )
-
-# TODO Define the parent class for configs
-ModelConfig = Any
 
 
 class XConfiguration:
@@ -64,25 +62,18 @@ class XConfiguration:
             model_cfg.torch_seed = rng.integers(1, 0xFFFFFFFFFFFF)
 
     @staticmethod
-    def _get_arch_config(arch: str):
-        arch_config = TransformerConfig
-        if arch == "MLP":
-            arch_config = MLPConfig
-        return arch_config
-
-    @staticmethod
-    def valid_params(arch: str):
+    def valid_params(model_cfg: ModelConfig):
         return {
-            **DataConfig.__annotations__,
-            **XConfiguration._get_arch_config(arch).__annotations__,
-            **OptimConfig.__annotations__,
+            **get_type_hints(DataConfig),
+            **get_type_hints(model_cfg),
+            **get_type_hints(OptimConfig),
         }
 
     @classmethod
     def from_dict(
         cls,
         idx: int,
-        arch: str,
+        model_config_class: Type[ModelConfig],
         conf_dict: Dict[str, Any],
         variables: Tuple[str] = tuple(),
     ) -> "XConfiguration":
@@ -90,7 +81,7 @@ class XConfiguration:
         conf_args = []
         for config_class in (
             DataConfig,
-            XConfiguration._get_arch_config(arch),
+            model_config_class,
             OptimConfig,
         ):
             common_param_set = (

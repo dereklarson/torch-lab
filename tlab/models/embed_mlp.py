@@ -8,15 +8,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tlab.models.lab_model import LabModel, ModelConfig
+
 
 @dataclass
-class MLPConfig:
+class MLPConfig(ModelConfig):
     d_embed: int
     mlp_layers: List[int]
     n_vocab: int
     n_ctx: int
     n_outputs: int
-    torch_seed: int = 0
 
 
 class Embed(nn.Module):
@@ -57,27 +58,18 @@ class MLP(nn.Module):
         return x
 
 
-class EmbedMLP(nn.Module):
+class EmbedMLP(LabModel):
     def __init__(self, cfg: MLPConfig):
-        super().__init__()
-        self.config = cfg
-
-        torch.manual_seed(cfg.torch_seed)
+        super().__init__(cfg)
 
         self.embed = Embed(cfg)
         self.mlp = MLP(cfg)
         self.unembed = Unembed(cfg, self.mlp.n_out)
+
+        self._init_hooks()
 
     def forward(self, x):
         x = self.embed(x)
         x = self.mlp(torch.flatten(x, 1))
         x = self.unembed(x)
         return x
-
-    @property
-    def shape(self) -> List:
-        return [(n, list(p.shape)) for n, p in self.named_parameters()]
-
-    @property
-    def n_params(self) -> int:
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
