@@ -17,7 +17,7 @@ from tlab.observation import Observations
 from tlab.optimize import Optimizer
 from tlab.utils.util import fourier_basis, to_numpy
 
-DEF_PLOTS = ["train_loss", "test_loss"]
+DEF_PLOTS = ["train_loss", "test_loss", "test_accuracy"]
 
 
 def live_plot(**kwargs):
@@ -35,10 +35,12 @@ def add_plots(fig: go.Figure, tag: str, plots=DEF_PLOTS):
 
 
 def update_plots(fig, obs: Observations, group_idx: int, plots=DEF_PLOTS):
+    if not fig:
+        return
     N = len(plots)
     idx = N * group_idx
     for param in plots:
-        fig.data[idx].y = obs.data[param]
+        fig.data[idx].y = np.array(obs.data[param]).reshape(-1, 10).mean(axis=1)
         idx += 1
 
 
