@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from prettytable import PrettyTable
 
 from tlab.models.lab_model import ModelConfig
+from tlab.observation import Observations
 from tlab.utils.util import StopExecution
 from tlab.xconfiguration import XConfiguration
 
@@ -55,7 +56,9 @@ class Experiment:
 
         self.ranges: Dict[str, Tuple[Any, ...]] = {}
         self.relations: Dict[str, Relation] = {}
-        self.observables: Dict[str, Tuple[Any, ...]] = {}
+
+        # Stores data gathered during a run, standard observables are added via init
+        self.observations = Observations(init=True)
 
     def __getitem__(self, key: int):
         for cfg in self.configure():
@@ -195,7 +198,14 @@ class Experiment:
                 idx, self.model_config_class, params, variables
             )
 
-    def initialize_run(self, force: bool = False):
+    def prepare_runs(self) -> XConfiguration:
+        """Generate Xconfigurations and initialize the run as well."""
+        for xcon in self.configure():
+            self.observations.init_run(self.tag)
+            xcon.dump(self.path)
+            yield xcon
+
+    def initialize(self, force: bool = False):
         """Set up file structure for the experiment."""
         if not os.path.isdir(self.path):
             print(f"Creating {self.path}")

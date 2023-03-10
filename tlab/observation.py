@@ -35,12 +35,15 @@ STD_OBSERVABLES = [
 
 
 class Observations:
-    def __init__(self) -> None:
+    def __init__(self, init=False) -> None:
         # Define functions for every observable
         self._obs_funcs = {}
 
         # 'data' reset during run initialization
         self.data: Dict[str, Any] = defaultdict(list)
+
+        if init:
+            self.add_standard_observables()
 
     def add_standard_observables(self) -> None:
         for observable in STD_OBSERVABLES:
@@ -132,15 +135,11 @@ def _accuracy(model: Transformer, data: DataDiv, device="cuda"):
     return accuracy
 
 
-def _fourier_components(
-    tensor: torch.Tensor, n_freq: int
-) -> Tuple[torch.Tensor, torch.tensor]:
-    """Perform a DFT on the tensor and get the strongest frequencies"""
+def _fourier_components(tensor: torch.Tensor, n_freq: int) -> torch.Tensor:
+    """Perform a DFT on the tensor, returning the strength of each frequency"""
     tensor = tensor.detach()
-    weights, indices = (
-        (tensor.T @ fourier_basis(n_freq).T).pow(2).sum(0).sort(descending=True)
-    )
-    return weights, indices
+    fourier_comp = (tensor.T @ fourier_basis(n_freq).T).pow(2).sum(0)
+    return fourier_comp
 
 
 class Observables:
@@ -200,9 +199,21 @@ class Observables:
         )
 
     @staticmethod
+    def embed_hf_fourier(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
+        """Calculate the highest frequency fourier component of W_E"""
+        # There are n_vocab / 2 frequencies, with a cosine and sine term each
+        # The constant term is at index 0, the cosine term of highest freq is at n_vocab - 1
+        component = model.config.n_vocab - 1
+        return float(
+            _fourier_components(model.embed.W_E, model.config.n_vocab)[component]
+        )
+
+    @staticmethod
     def embed_fi_gini(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
         """Calculate the 'Fourier Inverse Gini' coefficient of W_E"""
-        fourier_weights, _ = _fourier_components(model.embed.W_E, model.config.n_vocab)
+        fourier_weights, _ = _fourier_components(
+            model.embed.W_E, model.config.n_vocab
+        ).sort(descending=True)
         csum = torch.cumsum(fourier_weights, 0)
         return (len(csum) * csum[-1] / csum.sum()).to("cpu")
 
@@ -211,6 +222,8 @@ class Observables:
         model: Transformer, optim: Optimizer, data, **kwargs
     ) -> float:
         """Calculate the top_k frequencies present in W_E"""
-        _, fourier_freqs = _fourier_components(model.embed.W_E, model.config.n_vocab)
+        _, fourier_freqs = _fourier_components(
+            model.embed.W_E, model.config.n_vocab
+        ).sort(descending=True)
         top_k = kwargs.get("top_k", 6)
         return fourier_freqs.to("cpu").numpy()[:top_k]
