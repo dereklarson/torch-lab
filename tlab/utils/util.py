@@ -11,7 +11,7 @@ class StopExecution(Exception):
 
 
 def to_numpy(tensor):
-    if type(tensor) == torch.Tensor:
+    if type(tensor) in (torch.Tensor, torch.nn.parameter.Parameter):
         return tensor.detach().cpu().numpy()
     return tensor
 

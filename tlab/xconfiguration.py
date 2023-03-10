@@ -18,9 +18,7 @@ import torch
 from prettytable import PrettyTable
 
 from tlab.data import DataConfig, Dataset
-from tlab.models.embed_mlp import MLPConfig
-from tlab.models.lab_model import ModelConfig
-from tlab.models.transformer import Transformer, TransformerConfig
+from tlab.models.lab_model import LabModel, ModelConfig
 from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
 from tlab.utils.util import (
@@ -52,7 +50,7 @@ class XConfiguration:
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
 
-    def init_seeds(self, data_cfg: DataConfig, model_cfg: TransformerConfig) -> None:
+    def init_seeds(self, data_cfg: DataConfig, model_cfg: ModelConfig) -> None:
         """Generate new random seeds for Numpy and PyTorch if not specified."""
         if data_cfg.data_seed == 0:
             rng = np.random.default_rng()
@@ -133,7 +131,8 @@ class XConfiguration:
 
     @property
     def filebase(self) -> str:
-        return f"{self.idx:03}__{self.tag}"
+        safe_tag = self.tag.replace("[", "").replace("]", "")
+        return f"{self.idx:03}__{safe_tag}"
 
     @property
     def repr(self) -> str:
@@ -151,7 +150,7 @@ class XConfiguration:
     def checkpoint_model(
         self,
         root: Path,
-        model: Transformer,
+        model: LabModel,
         optim: Optimizer,
         observations: Observations,
     ):
@@ -166,7 +165,7 @@ class XConfiguration:
         }
         torch.save(save_dict, filepath)
 
-    def save_model(self, root: Path, model: Transformer, optim: Optimizer):
+    def save_model(self, root: Path, model: LabModel, optim: Optimizer):
         filepath = root / f"{self.filebase}_mdl.pth"
         save_dict = {
             "params": self.params,
@@ -189,8 +188,8 @@ class XConfiguration:
             state_dict = torch.load(checkpoint_file)
             yield state_dict
 
-    def load_model(self, root: Path):
-        model = Transformer(self.model)
+    def load_model(self, root: Path, model_class: Type[LabModel]):
+        model = model_class(self.model)
         model.load_state_dict(self.get_model_state(root))
         return model
 

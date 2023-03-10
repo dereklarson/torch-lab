@@ -60,11 +60,11 @@ class Optimizer:
 
     def step(self, model: Transformer, data: Dataset, device=None) -> None:
         """Process one training step: handle loss, learning_rate, etc"""
+        self.optimizer.zero_grad()
         train_loss, _ = self.measure_loss(model=model, data=data, device=device)
         train_loss.backward()
         self.optimizer.step()
         self.scheduler.step()
-        self.optimizer.zero_grad()
 
         if self.config.manual_decay:
             with torch.no_grad():

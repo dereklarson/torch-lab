@@ -17,7 +17,6 @@ Glossary of indices:
 """
 from dataclasses import dataclass
 
-import einops
 import numpy as np
 import torch
 import torch.nn as nn
