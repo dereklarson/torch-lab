@@ -164,6 +164,21 @@ class Experiment:
             table.add_row([f"*{param}", values])
         print(table)
 
+    def initialize(self, force: bool = False):
+        """Set up file structure for the experiment."""
+        if not os.path.isdir(self.path):
+            print(f"Creating {self.path}")
+            os.mkdir(self.path)
+        elif force or self.tag == Experiment.temp_tag:
+            print(f"Recreating directory '{self.tag}'")
+            shutil.rmtree(self.path)
+            os.mkdir(self.path)
+        else:
+            logging.warning(f"{self.path} already exists, stopping")
+            raise StopExecution
+
+        self.save()
+
     def _product(self) -> List[Dict[str, float]]:
         """Expand all combinations of parameter ranges."""
         if not self.ranges:
@@ -205,20 +220,8 @@ class Experiment:
             xcon.dump(self.path)
             yield xcon
 
-    def initialize(self, force: bool = False):
-        """Set up file structure for the experiment."""
-        if not os.path.isdir(self.path):
-            print(f"Creating {self.path}")
-            os.mkdir(self.path)
-        elif force or self.tag == Experiment.temp_tag:
-            print(f"Recreating directory '{self.tag}'")
-            shutil.rmtree(self.path)
-            os.mkdir(self.path)
-        else:
-            logging.warning(f"{self.path} already exists, stopping")
-            raise StopExecution
-
-        self.save()
+    def load_state(self, idx: int, epoch: Optional[int] = None):
+        return self[idx].get_model_state(self.path, epoch)
 
     def dump_json_data(self, dest: Path, name: str = "Default", **kwargs):
         # Dump a list of configurations

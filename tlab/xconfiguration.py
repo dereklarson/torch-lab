@@ -10,7 +10,7 @@ import pickle
 from dataclasses import fields
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Type, get_type_hints
+from typing import Any, Dict, List, Optional, Tuple, Type, get_type_hints
 
 import numpy as np
 import parse
@@ -178,8 +178,11 @@ class XConfiguration:
         }
         torch.save(save_dict, filepath)
 
-    def get_model_state(self, root: Path):
-        filepath = root / f"{self.filebase}_mdl.pth"
+    def get_model_state(self, root: Path, epoch: Optional[int] = None):
+        if epoch is not None:
+            filepath = root / f"{self.filebase}_mdl_{epoch:0>6d}.pth"
+        else:
+            filepath = root / f"{self.filebase}_mdl.pth"
         state_dict = torch.load(filepath)
         return state_dict["model"]
 
