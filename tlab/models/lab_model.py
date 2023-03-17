@@ -53,11 +53,11 @@ class LabModel(nn.Module):
         return [module for name, module in self.named_modules() if "hook" in name]
 
     def remove_all_hooks(self):
-        for hp in self.hook_points():
+        for hp in self.hook_points:
             hp.remove_hooks("fwd")
             hp.remove_hooks("bwd")
 
-    def cache_all(self, cache, incl_bwd=False):
+    def cache_all(self, cache, include_backward=False):
         # Caches all activations wrapped in a HookPoint
         def save_hook(tensor, name):
             cache[name] = tensor.detach()
@@ -65,7 +65,7 @@ class LabModel(nn.Module):
         def save_hook_back(tensor, name):
             cache[name + "_grad"] = tensor[0].detach()
 
-        for hp in self.hook_points():
+        for hp in self.hook_points:
             hp.add_hook(save_hook, "fwd")
-            if incl_bwd:
+            if include_backward:
                 hp.add_hook(save_hook_back, "bwd")
