@@ -18,6 +18,8 @@ class MLPConfig(ModelConfig):
     n_vocab: int
     n_ctx: int
     n_outputs: int
+    use_bias: bool = True
+    use_multlayer: bool = False
 
 
 class Embed(nn.Module):
@@ -40,6 +42,50 @@ class Unembed(nn.Module):
         return x @ self.W_U
 
 
+class MLPLayer(nn.Module):
+    def __init__(self, cfg: MLPConfig, n_in: int, n_out: int):
+        super().__init__()
+        self.cfg = cfg
+        # self.weight = nn.Parameter(torch.rand(n_in, n_out) / np.sqrt(n_in))
+        self.weight = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        if self.cfg.use_bias:
+            self.bias = nn.Parameter(
+                torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
+            )
+
+    def forward(self, x):
+        x = x @ self.weight.T
+        if self.cfg.use_bias:
+            x += self.bias
+        return x
+
+
+class MultLayer(nn.Module):
+    def __init__(self, cfg: MLPConfig, n_in: int, n_out: int):
+        super().__init__()
+        self.cfg = cfg
+        self.W_A = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        self.W_B = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        if self.cfg.use_bias:
+            self.bias = nn.Parameter(
+                torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
+            )
+
+    def forward(self, x):
+        left = x @ self.W_A.T
+        right = x @ self.W_B.T
+        x = left * right
+        if self.cfg.use_bias:
+            x += self.bias
+        return x
+
+
 class MLP(nn.Module):
     def __init__(self, cfg: MLPConfig):
         super().__init__()
@@ -47,12 +93,16 @@ class MLP(nn.Module):
         n_out = n_in
         layers = []
         for n_out in cfg.mlp_layers:
-            layers.append(nn.Linear(n_in, n_out))
+            if cfg.use_multlayer:
+                layers.append(MultLayer(cfg, n_in, n_out))
+            else:
+                layers.append(MLPLayer(cfg, n_in, n_out))
             n_in = n_out
         self.layers = nn.ModuleList(layers)
         self.n_out = n_out
 
     def forward(self, x):
+        x = torch.flatten(x, 1)
         for layer in self.layers:
             x = F.relu(layer(x))
         return x
@@ -70,6 +120,6 @@ class EmbedMLP(LabModel):
 
     def forward(self, x):
         x = self.embed(x)
-        x = self.mlp(torch.flatten(x, 1))
+        x = self.mlp(x)
         x = self.unembed(x)
         return x
