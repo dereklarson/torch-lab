@@ -19,6 +19,7 @@ class OptimConfig:
     n_epochs: int = 10000
     fixed_wnorm: bool = False  # Rescale weights after each update so norm is fixed
     manual_decay: float = 0.0
+    adam_betas: tuple = (0.90, 0.98)
 
 
 class Optimizer:
@@ -34,7 +35,7 @@ class Optimizer:
             model.parameters(),
             lr=cfg.learning_rate,
             weight_decay=cfg.weight_decay,
-            betas=(0.9, 0.98),
+            betas=cfg.adam_betas,
         )
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer, lambda step: min(step / 10, 1)
