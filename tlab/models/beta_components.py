@@ -1,19 +1,58 @@
-from typing import TYPE_CHECKING
-
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tlab.models.lab_model import ModelConfig
 from tlab.utils.hookpoint import HookPoint
 
-if TYPE_CHECKING:
-    from tlab.models.transformer import TransformerConfig
+
+class MixLayer(nn.Module):
+    def __init__(self, cfg: ModelConfig, n_in: int, n_out: int):
+        super().__init__()
+        self.cfg = cfg
+        self.W_A = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        self.W_B = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        if cfg.use_bias:
+            self.bias_a = nn.Parameter(
+                torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
+            )
+            self.bias_b = nn.Parameter(
+                torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
+            )
+
+    def forward(self, x):
+        left = x @ self.W_A.T
+        right = x @ self.W_B.T
+        if self.cfg.use_bias:
+            left += self.bias_a
+            right += self.bias_b
+        x = left * right
+        return x
+
+
+class MultLayer(nn.Module):
+    def __init__(self, cfg: ModelConfig, n_in: int, n_out: int):
+        super().__init__()
+        self.weight = nn.Parameter(
+            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+        self.bias = nn.Parameter(
+            torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
+        )
+
+    def forward(self, x):
+        x = x * (x @ self.weight.T + self.bias)
+        return x
 
 
 class EmbeddingAttention(nn.Module):
-    def __init__(self, cfg: "TransformerConfig"):
+    def __init__(self, cfg: ModelConfig):
         super().__init__()
 
         self.W_K = nn.Parameter(

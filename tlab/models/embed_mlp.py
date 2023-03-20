@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tlab.models.beta_components import MixLayer, MultLayer
 from tlab.models.lab_model import LabModel, ModelConfig
 
 
@@ -19,7 +20,7 @@ class MLPConfig(ModelConfig):
     n_ctx: int
     n_outputs: int
     use_bias: bool = True
-    use_multlayer: bool = False
+    layer_type: str = "Linear"
 
 
 class Embed(nn.Module):
@@ -42,11 +43,10 @@ class Unembed(nn.Module):
         return x @ self.W_U
 
 
-class MLPLayer(nn.Module):
+class LinearLayer(nn.Module):
     def __init__(self, cfg: MLPConfig, n_in: int, n_out: int):
         super().__init__()
         self.cfg = cfg
-        # self.weight = nn.Parameter(torch.rand(n_in, n_out) / np.sqrt(n_in))
         self.weight = nn.Parameter(
             torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
         )
@@ -62,30 +62,6 @@ class MLPLayer(nn.Module):
         return x
 
 
-class MultLayer(nn.Module):
-    def __init__(self, cfg: MLPConfig, n_in: int, n_out: int):
-        super().__init__()
-        self.cfg = cfg
-        self.W_A = nn.Parameter(
-            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
-        )
-        self.W_B = nn.Parameter(
-            torch.FloatTensor(n_out, n_in).uniform_(-1, 1) / np.sqrt(n_in)
-        )
-        if self.cfg.use_bias:
-            self.bias = nn.Parameter(
-                torch.FloatTensor(n_out).uniform_(-1, 1) / np.sqrt(n_in)
-            )
-
-    def forward(self, x):
-        left = x @ self.W_A.T
-        right = x @ self.W_B.T
-        x = left * right
-        if self.cfg.use_bias:
-            x += self.bias
-        return x
-
-
 class MLP(nn.Module):
     def __init__(self, cfg: MLPConfig):
         super().__init__()
@@ -93,10 +69,14 @@ class MLP(nn.Module):
         n_out = n_in
         layers = []
         for n_out in cfg.mlp_layers:
-            if cfg.use_multlayer:
+            if cfg.layer_type == "Mix":
+                layers.append(MixLayer(cfg, n_in, n_out))
+            elif cfg.layer_type == "Mult":
                 layers.append(MultLayer(cfg, n_in, n_out))
+            elif cfg.layer_type == "Linear":
+                layers.append(LinearLayer(cfg, n_in, n_out))
             else:
-                layers.append(MLPLayer(cfg, n_in, n_out))
+                raise Exception(f"No layer for type '{cfg.layer_type}'")
             n_in = n_out
         self.layers = nn.ModuleList(layers)
         self.n_out = n_out
