@@ -138,7 +138,8 @@ def _accuracy(model: Transformer, data: DataDiv, device="cuda"):
 def _fourier_components(tensor: torch.Tensor, n_freq: int) -> torch.Tensor:
     """Perform a DFT on the tensor, returning the strength of each frequency"""
     tensor = tensor.detach()
-    fourier_comp = (tensor.T @ fourier_basis(n_freq).T).pow(2).sum(0)
+    fourier_comp = torch.linalg.norm(fourier_basis(n_freq) @ tensor, axis=1)
+    fourier_comp /= torch.linalg.norm(fourier_comp)
     return fourier_comp
 
 
@@ -203,17 +204,20 @@ class Observables:
         """Calculate the highest frequency fourier component of W_E"""
         # There are n_vocab / 2 frequencies, with a cosine and sine term each
         # The constant term is at index 0, the cosine term of highest freq is at n_vocab - 1
-        component = model.config.n_vocab - 1
-        return float(
-            _fourier_components(model.embed.W_E, model.config.n_vocab)[component]
-        )
+        n_comp = model.config.n_vocab
+        tensor = model.embed.W_E.detach()
+        top_comp, _ = torch.max(fourier_basis(n_comp) @ tensor, axis=1)
+        top_comp /= torch.linalg.norm(top_comp)
+        return float(top_comp[n_comp - 1])
 
     @staticmethod
     def embed_fi_gini(model: Transformer, optim: Optimizer, data, **kwargs) -> float:
         """Calculate the 'Fourier Inverse Gini' coefficient of W_E"""
-        fourier_weights, _ = _fourier_components(
-            model.embed.W_E, model.config.n_vocab
-        ).sort(descending=True)
+        n_comp = model.config.n_vocab
+        tensor = model.embed.W_E.detach()
+        fourier_weights = torch.linalg.norm(fourier_basis(n_comp) @ tensor, axis=1)
+        fourier_weights /= torch.linalg.norm(fourier_weights)
+        fourier_weights.sort(descending=True)
         csum = torch.cumsum(fourier_weights, 0)
         return (len(csum) * csum[-1] / csum.sum()).to("cpu")
 
