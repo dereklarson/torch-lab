@@ -15,7 +15,8 @@ from plotly.subplots import make_subplots
 from tlab.experiment import Experiment
 from tlab.observation import Observations
 from tlab.optimize import Optimizer
-from tlab.utils.util import fourier_basis, to_numpy
+from tlab.utils.analysis import fourier_basis
+from tlab.utils.util import to_numpy
 
 DEF_PLOTS = ["train_loss", "test_loss", "test_accuracy"]
 
@@ -34,13 +35,28 @@ def add_plots(fig: go.Figure, tag: str, plots=DEF_PLOTS):
         fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
 
 
-def update_plots(fig, obs: Observations, group_idx: int, plots=DEF_PLOTS):
+def update_plots(
+    fig,
+    obs: Observations,
+    group_idx: int,
+    plots=DEF_PLOTS,
+    thinning: Optional[int] = None,
+):
     if not fig:
         return
     N = len(plots)
     idx = N * group_idx
     for param in plots:
-        fig.data[idx].y = np.array(obs.data[param]).reshape(-1, 10).mean(axis=1)
+        if thinning:
+            fig.data[idx].x = (
+                np.array(obs.indices[param]).reshape(-1, thinning).mean(axis=1)
+            )
+            fig.data[idx].y = (
+                np.array(obs.data[param]).reshape(-1, thinning).mean(axis=1)
+            )
+        else:
+            fig.data[idx].x = np.array(obs.indices[param])
+            fig.data[idx].y = np.array(obs.data[param])
         idx += 1
 
 
@@ -137,7 +153,7 @@ def group_plot(
     for idx, obs_dict in obs.items():
         tag = obs_dict["tag"]
         params = {"group": str(idx), "tag": tag, "thinning": thinning}
-        x = np.array(range(len(obs_dict["train_loss"])))
+        x = np.array(range(len(obs_dict[fields[0][0]])))
         for param in fields[0]:
             fig.add_trace(_scatter(x, np.array(obs_dict[param]), name=param, **params))
         if len(fields) > 1:
