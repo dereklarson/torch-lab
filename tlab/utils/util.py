@@ -10,15 +10,26 @@ class StopExecution(Exception):
         pass
 
 
+def gen_sign_combinations(n_col: int) -> np.ndarray:
+    """Return an array with 2^n rows of all sign combinations of n values"""
+    return np.array(np.meshgrid(*([[-1, 1]] * n_col))).T.reshape(-1, n_col)
+
+
 def to_numpy(tensor):
     if type(tensor) in (torch.Tensor, torch.nn.parameter.Parameter):
         return tensor.detach().cpu().numpy()
     return tensor
 
 
-def set_weights(model, param_loc: str, tensor: torch.Tensor, fixed: bool = False):
+def to_torch(matrix):
+    if type(matrix) not in (torch.Tensor, torch.nn.parameter.Parameter):
+        matrix = torch.tensor(matrix)
+    return matrix.to("cuda")
+
+
+def set_weights(model, param_loc: str, data, fixed: bool = False):
     param = dict(model.named_parameters())[param_loc]
-    param.data = tensor
+    param.data = to_torch(data)
     if fixed:
         param.requires_grad = False
 
@@ -31,26 +42,20 @@ def set_weights_by_file(model, param_loc: str, tensor_file: str, fixed: bool = F
         param.requires_grad = False
 
 
+def add_row(tensor: torch.Tensor, val: float) -> torch.Tensor:
+    return torch.nn.ConstantPad1d((0, 0, 0, 1), val)(tensor)
+
+
+def add_col(tensor: torch.Tensor, val: float) -> torch.Tensor:
+    return torch.nn.ConstantPad1d((0, 1, 0, 0), val)(tensor)
+
+
 def cos_k(i, k):
     return torch.cos(2 * torch.pi * torch.arange(k) * i / k)
 
 
 def normalize(matrix: np.ndarray, axis: int = 1) -> np.ndarray:
     return matrix / matrix.sum(axis=1)[:, np.newaxis]
-
-
-@functools.lru_cache(maxsize=None)
-def fourier_basis(k):
-    fourier_basis = []
-    fourier_basis.append(torch.ones(k) / np.sqrt(k))
-    # Note that if p is even, we need to explicitly add a term for cos(kpi), ie
-    # alternating +1 and -1
-    for i in range(1, k // 2 + 1):
-        fourier_basis.append(torch.cos(2 * torch.pi * torch.arange(k) * i / k))
-        fourier_basis.append(torch.sin(2 * torch.pi * torch.arange(k) * i / k))
-        fourier_basis[-2] /= fourier_basis[-2].norm()
-        fourier_basis[-1] /= fourier_basis[-1].norm()
-    return torch.stack(fourier_basis, dim=0).to("cuda")
 
 
 def get_qk(params, block_index: int):
