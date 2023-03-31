@@ -2,7 +2,7 @@
 """
 import itertools
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Tuple, TypedDict
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -11,7 +11,6 @@ from tlab.utils.util import to_numpy
 
 OPERATION_MAP = {
     "add": "+",
-    "par": "+",
     "sub": "-",
     "mul": "*",
 }
@@ -19,10 +18,11 @@ OPERATION_MAP = {
 
 @dataclass
 class DataConfig:
-    value_range: int  # Range of integers involved in the arithmetic
-    operation: str  # Numerical operation to use for label calculation
-    training_fraction: float  # Amount of generated data put into training set
     data_seed: int  # Numpy RNG seed for generating data (separate from PyTorch)
+    value_range: int = 10  # Range of integers involved in the arithmetic
+    result_mod: int = 10  # Apply modulo to the result
+    operation: str = "add"  # Numerical operation to use for label calculation
+    training_fraction: float = 0.7  # Amount of generated data put into training set
     dist_style: str = "normal"  # Keyword to trigger different distributions of data
     value_count: int = 2  # How many input values (i.e. Transformer context)
     # 'base' will default to 'value_range' if not set
@@ -87,8 +87,10 @@ class Dataset:
 
             # Apply label first, which is easier before inserting operator tokens
             operation = _get_operation(cfg)
-            train_labels.extend(np.apply_along_axis(operation, 1, curr_train_in))
-            test_labels.extend(np.apply_along_axis(operation, 1, curr_test_in))
+            if curr_train_in:
+                train_labels.extend(np.apply_along_axis(operation, 1, curr_train_in))
+            if curr_test_in:
+                test_labels.extend(np.apply_along_axis(operation, 1, curr_test_in))
             if use_operators:
                 op_token_idx = vocabulary.index(OPERATION_MAP.get(cfg.operation, "XX"))
                 _insert_op(curr_train_in, op_token_idx)
@@ -137,13 +139,11 @@ class Dataset:
 
 def _get_operation(cfg: DataConfig):
     if cfg.operation == "add":
-        operation = lambda x: sum(x) % cfg.value_range
+        operation = lambda x: sum(x) % cfg.result_mod
     elif cfg.operation == "sub":
-        operation = lambda x: (x[0] - sum(x[1:])) % cfg.value_range
+        operation = lambda x: (x[0] - sum(x[1:])) % cfg.result_mod
     elif cfg.operation == "mul":
-        operation = lambda x: np.prod(x) % cfg.value_range
-    elif cfg.operation == "par":
-        operation = lambda x: sum(x) % 2
+        operation = lambda x: np.prod(x) % cfg.result_mod
     elif cfg.operation == "max":
         operation = lambda x: max(x)
     elif cfg.operation == "min":
