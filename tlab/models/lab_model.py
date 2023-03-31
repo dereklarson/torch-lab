@@ -19,6 +19,10 @@ class ModelConfig:
 
 
 class LabModel(nn.Module):
+    @dataclass
+    class Config:
+        torch_seed: int
+
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.config = cfg
