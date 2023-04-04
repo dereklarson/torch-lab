@@ -22,10 +22,19 @@ class LinearLayer(nn.Module):
         return x
 
 
+class Embed(nn.Module):
+    def __init__(self, n_vocab: int, d_embed: int):
+        super().__init__()
+        self.W_E = nn.Parameter(torch.randn(n_vocab, d_embed) / np.sqrt(d_embed))
+
+    def forward(self, x):
+        return self.W_E[x, :]
+
+
 class Unembed(nn.Module):
     def __init__(self, n_in: int, n_outputs: int):
         super().__init__()
-        self.W_U = nn.Parameter(torch.randn(n_in, n_outputs) / np.sqrt(n_in))
+        self.W_U = nn.Parameter(torch.randn(n_outputs, n_in) / np.sqrt(n_in))
 
     def forward(self, x):
-        return x @ self.W_U
+        return x @ self.W_U.T

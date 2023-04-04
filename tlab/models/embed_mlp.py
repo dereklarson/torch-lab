@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tlab.models.beta_components import MixLayer, MultLayer, SimpleMultLayer
-from tlab.models.components import LinearLayer
+from tlab.models.components import Embed, LinearLayer, Unembed
 from tlab.models.lab_model import LabModel, ModelConfig
 from tlab.utils.hookpoint import HookPoint
 
@@ -23,26 +23,6 @@ class MLPConfig(ModelConfig):
     n_outputs: int
     use_bias: bool = True
     layer_type: str = "Linear"
-
-
-class Embed(nn.Module):
-    def __init__(self, cfg: MLPConfig):
-        super().__init__()
-        self.W_E = nn.Parameter(
-            torch.randn(cfg.n_vocab, cfg.d_embed) / np.sqrt(cfg.d_embed)
-        )
-
-    def forward(self, x):
-        return self.W_E[x, :]
-
-
-class Unembed(nn.Module):
-    def __init__(self, cfg: MLPConfig, n_in: int):
-        super().__init__()
-        self.W_U = nn.Parameter(torch.randn(cfg.n_outputs, n_in) / np.sqrt(n_in))
-
-    def forward(self, x):
-        return x @ self.W_U.T
 
 
 class MLP(nn.Module):
@@ -77,9 +57,9 @@ class EmbedMLP(LabModel):
     def __init__(self, cfg: MLPConfig):
         super().__init__(cfg)
 
-        self.embed = Embed(cfg)
+        self.embed = Embed(n_vocab=cfg.n_vocab, d_embed=cfg.d_embed)
         self.mlp = MLP(cfg)
-        self.unembed = Unembed(cfg, self.mlp.n_out)
+        self.unembed = Unembed(n_in=self.mlp.n_out, n_outputs=cfg.n_outputs)
 
         self.hook_embed = HookPoint()
         self.hook_mlp = HookPoint()
