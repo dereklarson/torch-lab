@@ -1,8 +1,11 @@
-import functools
+import copy
 import pickle
+from typing import Optional
 
 import numpy as np
 import torch
+
+from tlab.models.lab_model import LabModel
 
 
 class StopExecution(Exception):
@@ -27,19 +30,35 @@ def to_torch(matrix):
     return matrix.to("cuda")
 
 
-def set_weights(model, param_loc: str, data, fixed: bool = False):
+def set_weights(model: LabModel, param_loc: str, data, fixed: bool = False):
     param = dict(model.named_parameters())[param_loc]
     param.data = to_torch(data)
     if fixed:
         param.requires_grad = False
 
 
-def set_weights_by_file(model, param_loc: str, tensor_file: str, fixed: bool = False):
+def set_weights_by_file(
+    model: LabModel, param_loc: str, tensor_file: str, fixed: bool = False
+):
     param = dict(model.named_parameters())[param_loc]
     with open(f"weights/{tensor_file}", "rb") as fh:
         param.data = pickle.load(fh)
     if fixed:
         param.requires_grad = False
+
+
+def ablate_model(
+    model: LabModel, param: str, row: Optional[int] = None, col: Optional[int] = None
+):
+    """Zero out a row or column from a specified parameter in a model copy"""
+    ablated_model = copy.deepcopy(model)
+    with torch.no_grad():
+        weights = dict(ablated_model.named_parameters())[param]
+        if row is not None:
+            weights.data[row] = 0
+        elif col is not None:
+            weights.data[:, col] = 0
+    return ablated_model
 
 
 def add_row(tensor: torch.Tensor, val: float) -> torch.Tensor:
