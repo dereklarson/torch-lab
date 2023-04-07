@@ -23,11 +23,13 @@ class MLPConfig(ModelConfig):
     n_outputs: int
     use_bias: bool = True
     layer_type: str = "Linear"
+    activation_type: str = "ReLU"
 
 
 class MLP(nn.Module):
     def __init__(self, cfg: MLPConfig):
         super().__init__()
+        self.cfg = cfg
         n_in = cfg.d_embed * cfg.n_ctx
         n_out = n_in
         layers = []
@@ -49,7 +51,10 @@ class MLP(nn.Module):
     def forward(self, x):
         x = torch.flatten(x, 1)
         for layer in self.layers:
-            x = F.relu(layer(x))
+            if self.cfg.activation_type == "ReLU":
+                x = F.relu(layer(x))
+            elif self.cfg.activation_type == "LeakyReLU":
+                x = nn.LeakyReLU(0.01)(layer(x))
         return x
 
 

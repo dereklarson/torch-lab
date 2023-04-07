@@ -1,7 +1,7 @@
 """Simple MLP
 """
 from dataclasses import dataclass
-from typing import List
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ class MLP(LabModel):
     class Config(ModelConfig):
         n_inputs: int
         n_outputs: int
-        mlp_layers: List[int]
+        mlp_layers: Tuple[int, ...]
         use_bias: bool = True
         layer_type: str = "Linear"
 
