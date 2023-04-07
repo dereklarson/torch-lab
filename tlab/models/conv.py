@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -8,6 +9,30 @@ import torch.nn.functional as F
 from tlab.models.beta_components import MixLayer
 from tlab.models.components import LinearLayer, Unembed
 from tlab.models.lab_model import LabModel, ModelConfig
+from tlab.models.mlp import MLP
+
+
+class LeNet(LabModel):
+    @dataclass
+    class Config(ModelConfig):
+        n_inputs: int
+        n_outputs: int
+        mlp_layers: Tuple[int, ...] = (120, 84)
+        use_bias: bool = True
+        layer_type: str = "Linear"
+
+    def __init__(self, cfg: Config):
+        super().__init__(cfg)
+        self.conv1 = nn.Conv2d(1, 6, 5, padding=2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        mlp_config = MLP.Config(**{**asdict(cfg), "n_inputs": 16 * 5 * 5})
+        self.mlp = MLP(mlp_config)
+
+    def forward(self, x):
+        x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
+        x = F.max_pool2d(F.relu(self.conv2(x)), (2, 2))
+        x = self.mlp(x)
+        return x
 
 
 class ConvNet(LabModel):
