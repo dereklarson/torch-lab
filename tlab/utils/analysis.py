@@ -26,12 +26,21 @@ def tensor2sign(tensor: torch.Tensor, threshold: float = 0.0) -> torch.Tensor:
 
 
 def sign_similarity(tensor: torch.Tensor, threshold: float = 0.0) -> torch.Tensor:
-    """Return a tensor containing row-wise sign similarity counts.
-
-    Element A_ij of the result contains the dot product
-    """
+    """Return a tensor containing row-wise sign similarity counts."""
     signs = tensor2sign(tensor, threshold)
     n_nonzero = signs.abs().sum(1).repeat((signs.shape[0], 1))
     elem_ct = torch.max(n_nonzero, n_nonzero.T)
     prod = (signs @ signs.T) / elem_ct
     return prod.tril(diagonal=-1)
+
+
+def self_similarity(tensor: torch.Tensor) -> torch.Tensor:
+    """Return a tensor containing row-wise similarity magnitudes.
+
+    Element A_ij of the result contains the dot product of rows i and j.
+    This is clamped to non-negative values, i.e. vectors at opposing
+    directions yield 0 similarity.
+    """
+    normed = (tensor.T / torch.linalg.norm(tensor, dim=1)).T
+    positive_prod = torch.clamp(normed @ normed.T, min=0, max=None)
+    return positive_prod.fill_diagonal_(0)

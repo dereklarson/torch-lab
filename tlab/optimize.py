@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from tlab.data import Dataset
 from tlab.models.lab_model import LabModel
-from tlab.utils.analysis import sign_similarity
+from tlab.utils.analysis import self_similarity, sign_similarity
 
 
 @dataclass
@@ -22,6 +22,8 @@ class OptimConfig:
     adam_betas: tuple = (0.90, 0.98)
     fixed_wnorm: bool = False  # Rescale weights after each update so norm is fixed
     shuffle_threshold: float = 0.0  # Perform an update to reduce sign similarity
+    repulsion_strength: float = 0.0  # Encourages orthogonality in weight matrices
+    repulsion_decay: float = 1.0  # Multiplies repulsive strength every epoch
 
 
 class Optimizer:
@@ -83,6 +85,17 @@ class Optimizer:
         self.epoch += 1
         self.iteration += 1
 
+    def repulsion_update(self, model: LabModel, params: List[str], coeff: float = 0.01):
+        for param in params:
+            weights = dict(model.named_parameters())[param]
+            with torch.no_grad():
+                ss = self_similarity(weights)
+                diag_mag = torch.sum(ss, dim=0)
+                delta = diag_mag[:, None] * weights - torch.einsum(
+                    "ki,kj->ij", ss, weights
+                )
+                weights += coeff * delta
+
     def sign_shuffle(
         self,
         model: LabModel,
@@ -116,6 +129,7 @@ class Optimizer:
 
     def end_epoch(self, model: LabModel, test_loader) -> None:
         """Process one training step: handle loss, learning_rate, etc"""
+        model.eval()
         batch_losses = []
         for inputs, labels in test_loader:
             batch_losses.append(self.loss_func(model(inputs), labels[:, None]).item())
@@ -126,20 +140,25 @@ class Optimizer:
     @property
     def display(self) -> Dict[str, str]:
         """Postfix for TQDM progress bar, to track key variables"""
-        return dict(
+        display_entries = dict(
+            gpu=f"{gpu_mem():.3f}",
             lr=f"{self.scheduler.get_last_lr()[0]}",
             train=f"{np.log(self.train_losses[-1]):.4f}",
-            test=f"{np.log(self.test_losses[-1]):.4f}",
-            gpu=f"{gpu_mem():.3f}",
         )
+        if len(self.test_losses) > 0:
+            display_entries["test"] = f"{np.log(self.test_losses[-1]):.4f}"
+        return display_entries
 
     @property
     def epoch_display(self) -> Dict[str, str]:
         """Postfix for TQDM progress bar, to track key variables"""
-        return dict(
+        display_entries = dict(
+            gpu=f"{gpu_mem():.3f}",
             train=f"{np.log(self.train_losses[-1]):.4f}",
-            test=f"{np.log(self.test_losses[-1]):.4f}",
         )
+        if len(self.test_losses) > 0:
+            display_entries["test"] = f"{np.log(self.test_losses[-1]):.4f}"
+        return display_entries
 
 
 def gpu_mem() -> float:

@@ -24,7 +24,7 @@ import torch
 from tlab.data import DataDiv, Dataset
 from tlab.models.lab_model import LabModel
 from tlab.optimize import Optimizer
-from tlab.utils.analysis import fourier_basis, sign_similarity
+from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
 
 STD_OBSERVABLES = [
     "train_loss",
@@ -211,6 +211,15 @@ class Observables:
     ) -> int:
         tensor = dict(model.named_parameters())[kwargs.get("name")]
         return float(torch.max(sign_similarity(tensor, 0.00)))
+
+    @staticmethod
+    def self_similarity(
+        model: LabModel, optim: Optimizer, data: tuple, **kwargs
+    ) -> int:
+        tensor = dict(model.named_parameters())[kwargs.get("name")]
+        normed_similarity = torch.linalg.norm(self_similarity(tensor))
+        normed_similarity /= tensor.shape[0]
+        return float(normed_similarity)
 
     @staticmethod
     def test_accuracy(
