@@ -23,71 +23,54 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tlab.models.beta_components import EmbeddingAttention
-from tlab.models.lab_model import LabModel, ModelConfig
+from tlab.models.components import Embed, PositionEmbed, Unembed
+from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
 
 
-@dataclass
-class TransformerConfig(ModelConfig):
-    d_embed: int
-    d_head: int
-    d_mlp: int
-    n_ctx: int
-    n_heads: int
-    n_blocks: int
-    n_vocab: int
-    p_dropout: float = 0.0
-    weight_alpha: float = 1.0
-    use_position: bool = True
-    attention_style: str = "normal"
+class Transformer(LabModel):
+    @dataclass
+    class Config(LabModel.Config):
+        d_embed: int
+        d_head: int
+        d_mlp: int
+        n_ctx: int
+        n_heads: int
+        n_blocks: int
+        n_vocab: int
+        p_dropout: float = 0.0
+        weight_alpha: float = 1.0
+        use_position: bool = True
+        attention_style: str = "normal"
 
+    def __init__(self, cfg: Config):
+        super().__init__(cfg)
 
-class Embed(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
-        super().__init__()
-        self.W_E = nn.Parameter(
-            cfg.weight_alpha
-            * torch.randn(cfg.n_vocab, cfg.d_embed)
-            / np.sqrt(cfg.d_embed)
-        )
-
-    def forward(self, x):
-        return self.W_E[x, :]
-
-
-class Unembed(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
-        super().__init__()
-        self.W_U = nn.Parameter(
-            cfg.weight_alpha
-            * torch.randn(cfg.d_embed, cfg.n_vocab)
-            / np.sqrt(cfg.n_vocab)
-        )
-
-    def forward(self, x):
-        return x @ self.W_U
-
-
-class PositionEmbed(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
-        super().__init__()
+        self.embed = Embed(n_vocab=cfg.n_vocab, d_embed=cfg.d_embed)
         if cfg.use_position:
-            self.W_pos = nn.Parameter(
-                cfg.weight_alpha
-                * torch.randn(cfg.n_ctx, cfg.d_embed)
-                / np.sqrt(cfg.d_embed)
-            )
-        else:
-            self.W_pos = nn.Parameter(
-                torch.zeros(cfg.n_ctx, cfg.d_embed), requires_grad=False
-            )
+            self.position_embed = PositionEmbed(cfg)
+
+        # TODO Consider allowing variants to the standard TransformerBlock
+        block = TransformerBlock
+
+        self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_blocks)])
+        self.unembed = Unembed(n_in=cfg.d_embed, n_outputs=cfg.n_vocab)
+
+        self._init_hooks()
 
     def forward(self, x):
-        return x + self.W_pos
+        x = self.embed(x)
+        if self.config.use_position:
+            x = self.position_embed(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.unembed(x)
+        # Use the last position of context for the prediction
+        return x[:, -1]
 
 
 class Attention(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
+    def __init__(self, cfg: Transformer.Config):
         super().__init__()
 
         self.W_K = nn.Parameter(
@@ -141,8 +124,8 @@ class Attention(nn.Module):
         return out
 
 
-class MLP(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
+class TransformerMLP(nn.Module):
+    def __init__(self, cfg: Transformer.Config):
         super().__init__()
         self.W_in = nn.Parameter(
             cfg.weight_alpha
@@ -172,7 +155,7 @@ class MLP(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, cfg: TransformerConfig):
+    def __init__(self, cfg: Transformer.Config):
         super().__init__()
         if cfg.attention_style == "cross":
             self.attn = EmbeddingAttention(cfg)
@@ -182,7 +165,7 @@ class TransformerBlock(nn.Module):
         self.hook_resid_pre = HookPoint()
         self.hook_resid_mid = HookPoint()
         if cfg.d_mlp > 0:
-            self.mlp = MLP(cfg)
+            self.mlp = TransformerMLP(cfg)
             self.hook_resid_post = HookPoint()
             self.hook_mlp_out = HookPoint()
 
@@ -193,28 +176,3 @@ class TransformerBlock(nn.Module):
         if hasattr(self, "mlp"):
             x = self.hook_resid_post(x + self.hook_mlp_out(self.mlp((x))))
         return x
-
-
-class Transformer(LabModel):
-    def __init__(self, cfg: TransformerConfig):
-        super().__init__(cfg)
-
-        self.embed = Embed(cfg)
-        self.position_embed = PositionEmbed(cfg)
-
-        # TODO Consider allowing variants to the standard TransformerBlock
-        block = TransformerBlock
-
-        self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_blocks)])
-        self.unembed = Unembed(cfg)
-
-        self._init_hooks()
-
-    def forward(self, x):
-        x = self.embed(x)
-        x = self.position_embed(x)
-        for block in self.blocks:
-            x = block(x)
-        x = self.unembed(x)
-        # Use the last position of context for the prediction
-        return x[:, -1]

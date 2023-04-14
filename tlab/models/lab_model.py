@@ -3,8 +3,9 @@
 This handles the HookPoint infrastructure and some utility methods that
 should be available for all models.
 """
-from dataclasses import dataclass
-from typing import List
+import inspect
+from dataclasses import asdict, dataclass
+from typing import List, Type
 
 import numpy as np
 import torch
@@ -21,7 +22,18 @@ class ModelConfig:
 class LabModel(nn.Module):
     @dataclass
     class Config:
+        model_class: Type["LabModel"]
         torch_seed: int
+
+        @classmethod
+        def from_parent(cls, parent):
+            return cls(
+                **{
+                    k: v
+                    for k, v in asdict(parent).items()
+                    if k in inspect.signature(cls).parameters
+                }
+            )
 
     def __init__(self, cfg: ModelConfig):
         super().__init__()

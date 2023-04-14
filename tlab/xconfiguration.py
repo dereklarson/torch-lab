@@ -191,8 +191,8 @@ class XConfiguration:
             state_dict = torch.load(checkpoint_file)
             yield state_dict
 
-    def load_model(self, root: Path, model_class: Type[LabModel]):
-        model = model_class(self.model)
+    def load_model(self, root: Path):
+        model = self.model.model_class(self.model)
         model.load_state_dict(self.get_model_state(root))
         return model
 

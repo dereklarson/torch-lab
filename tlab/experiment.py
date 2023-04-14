@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 from prettytable import PrettyTable
 
-from tlab.models.lab_model import ModelConfig
+from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
 from tlab.utils.util import StopExecution
 from tlab.xconfiguration import XConfiguration
@@ -42,15 +42,15 @@ class Experiment:
 
     def __init__(
         self,
-        model_config_class: Type[ModelConfig],
         tag: Optional[str] = None,
         defaults: Optional[Dict[str, float]] = None,
     ) -> None:
-        self.model_config_class = model_config_class
         self.tag = tag
         self.defaults = defaults or {}
 
-        self.valid_params = XConfiguration.valid_params(model_config_class)
+        assert "model_class" in defaults, "'defaults' dict must specify 'model_class'"
+        self.model_class = defaults["model_class"]
+        self.valid_params = XConfiguration.valid_params(self.model_class.Config)
         for key in self.defaults:
             assert key in self.valid_params.keys(), f"{key} is an invalid parameter"
 
@@ -210,7 +210,7 @@ class Experiment:
             params = self._get_params(variable_dict)
             variables = tuple(variable_dict.keys())
             yield XConfiguration.from_dict(
-                idx, self.model_config_class, params, variables
+                idx, self.model_class.Config, params, variables
             )
 
     def prepare_runs(self) -> XConfiguration:
