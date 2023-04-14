@@ -82,10 +82,18 @@ class Optimizer:
                         self.config.learning_rate * self.config.manual_decay * param
                     )
 
+        if self.config.repulsion_strength > 0:
+            params = getattr(self, "repulsion_params", [])
+            if not params and self.epoch == 0:
+                print("Repulsion strength set with no parameters")
+            self.repulsion_update(model, params, self.config.repulsion_strength)
+
         self.epoch += 1
         self.iteration += 1
 
-    def repulsion_update(self, model: LabModel, params: List[str], coeff: float = 0.01):
+    def repulsion_update(
+        self, model: LabModel, params: List[str], strength: float = 0.001
+    ):
         for param in params:
             weights = dict(model.named_parameters())[param]
             with torch.no_grad():
@@ -94,7 +102,7 @@ class Optimizer:
                 delta = diag_mag[:, None] * weights - torch.einsum(
                     "ki,kj->ij", ss, weights
                 )
-                weights += coeff * delta
+                weights += strength * delta
 
     def sign_shuffle(
         self,
