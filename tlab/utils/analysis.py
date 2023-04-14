@@ -1,4 +1,6 @@
+import collections
 import functools
+from typing import Set
 
 import numpy as np
 import torch
@@ -23,6 +25,59 @@ def tensor2sign(tensor: torch.Tensor, threshold: float = 0.0) -> torch.Tensor:
     tensor = tensor.detach().clone()
     tensor[abs(tensor) <= threshold] = 0
     return torch.sign(tensor)
+
+
+def random_with_exclusion(minimum: int, maximum: int, exclusion: Set[int]) -> int:
+    """Return a random value, minimum <= val < maximum, that's not in exclusion"""
+    if maximum < 100000:
+        options = set(range(minimum, maximum)) - exclusion
+        return np.random.choice(list(options))
+    else:
+        # Untenable to create our option list for large maximum values, so we should
+        # rely on sparsity and just retry until we get a valid number.
+        choice = np.random.randint(minimum, maximum)
+        ct = 0
+        while choice in exclusion and ct < 100:
+            choice = np.random.randint(minimum, maximum)
+            ct += 1
+        assert ct < 100, "Too many tries for random_with_exclusion"
+        return choice
+
+
+def sign_index(tensor: torch.Tensor, threshold: float = 0.0) -> torch.Tensor:
+    """Return a tensor containing the sign of each element, if they meet a threshold."""
+    pow2 = torch.tensor([2**i for i in range(tensor.shape[1])])
+    sign_mask = (torch.sign(tensor) + 1) / 2
+    indices = (sign_mask * pow2).sum(axis=1)
+    return indices.int()
+
+
+def index2sign(idx: int, N: int) -> torch.Tensor:
+    """Return a vector of length N and sign index 'idx'"""
+    base = -np.ones(N)
+    for idx, digit in enumerate(bin(idx)[2:][::-1]):
+        if digit == "1":
+            base[idx] = 1
+    return torch.tensor(base)
+
+
+def distinguish_signs(tensor: torch.Tensor) -> torch.Tensor:
+    M, N = tensor.shape
+    # Numpy cast required as torch.Tensor elements seem to be considered unique even if
+    # their value is equivalent.
+    indices = sign_index(tensor).numpy()
+    used = set(indices)
+    to_fix = {key: False for key, ct in collections.Counter(indices).items() if ct > 1}
+    for sign_idx, row_idx in zip(indices, range(M)):
+        if sign_idx not in to_fix:
+            continue
+        if not to_fix[sign_idx]:
+            to_fix[sign_idx] = True
+            continue
+        new_idx = random_with_exclusion(0, 2**N, used)
+        used.add(new_idx)
+        tensor[row_idx] = tensor[row_idx].abs() * index2sign(new_idx, N)
+    return tensor
 
 
 def sign_similarity(tensor: torch.Tensor, threshold: float = 0.0) -> torch.Tensor:
