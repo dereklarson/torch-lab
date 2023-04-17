@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from tlab.models.beta_components import MixLayer, MultLayer, SimpleMultLayer
 from tlab.models.components import Embed, LinearLayer, Unembed
-from tlab.models.lab_model import LabModel, ModelConfig
+from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
 
 

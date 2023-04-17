@@ -18,7 +18,7 @@ import torch
 from prettytable import PrettyTable
 
 from tlab.data import DataConfig, Dataset
-from tlab.models.lab_model import LabModel, ModelConfig
+from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
 from tlab.utils.util import (
@@ -36,7 +36,7 @@ class XConfiguration:
         self,
         idx: int,
         data_cfg: DataConfig,
-        model_cfg: ModelConfig,
+        model_cfg: LabModel.Config,
         optim_cfg: OptimConfig,
         variables: Tuple[str] = tuple(),
     ) -> None:
@@ -46,11 +46,11 @@ class XConfiguration:
 
         # TODO Allow a set of DataConfigs to specify composite datasets
         self.data: DataConfig = data_cfg
-        self.model: ModelConfig = model_cfg
+        self.model: LabModel.Config = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
 
-    def init_seeds(self, data_cfg: DataConfig, model_cfg: ModelConfig) -> None:
+    def init_seeds(self, data_cfg: DataConfig, model_cfg: LabModel.Config) -> None:
         """Generate new random seeds for Numpy and PyTorch if not specified."""
         if data_cfg.data_seed == 0:
             rng = np.random.default_rng()
@@ -60,10 +60,10 @@ class XConfiguration:
             model_cfg.torch_seed = rng.integers(1, 0xFFFFFFFFFFFF)
 
     @staticmethod
-    def valid_params(model_cfg: ModelConfig):
+    def valid_params(model_class: Type[LabModel]):
         return {
             **get_type_hints(DataConfig),
-            **get_type_hints(model_cfg),
+            **get_type_hints(model_class.Config),
             **get_type_hints(OptimConfig),
         }
 
@@ -71,7 +71,7 @@ class XConfiguration:
     def from_dict(
         cls,
         idx: int,
-        model_config_class: Type[ModelConfig],
+        model_class: Type[LabModel],
         conf_dict: Dict[str, Any],
         variables: Tuple[str] = tuple(),
     ) -> "XConfiguration":
@@ -79,7 +79,7 @@ class XConfiguration:
         conf_args = []
         for config_class in (
             DataConfig,
-            model_config_class,
+            model_class.Config,
             OptimConfig,
         ):
             common_param_set = (

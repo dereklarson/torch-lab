@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tlab.models.components import LinearLayer
-from tlab.models.lab_model import ModelConfig
+from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
 
 
@@ -73,7 +73,7 @@ class MixLayer(nn.Module):
 
 
 class EmbeddingAttention(nn.Module):
-    def __init__(self, cfg: ModelConfig):
+    def __init__(self, cfg: LabModel.Config):
         super().__init__()
 
         self.W_K = nn.Parameter(

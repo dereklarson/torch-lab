@@ -8,13 +8,13 @@ import torch.nn.functional as F
 
 from tlab.models.beta_components import MixLayer
 from tlab.models.components import LinearLayer, Unembed
-from tlab.models.lab_model import LabModel, ModelConfig
+from tlab.models.lab_model import LabModel
 from tlab.models.mlp import MLP
 
 
 class LeNet(LabModel):
     @dataclass
-    class Config(ModelConfig):
+    class Config(LabModel.Config):
         n_inputs: int
         n_outputs: int
         mlp_layers: Tuple[int, ...] = (120, 84)
@@ -37,7 +37,7 @@ class LeNet(LabModel):
 
 class ConvNet(LabModel):
     @dataclass
-    class Config(ModelConfig):
+    class Config(LabModel.Config):
         n_outputs: int
         mlp_layer: int
         n_inputs: int = 784

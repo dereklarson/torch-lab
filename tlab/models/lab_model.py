@@ -14,12 +14,12 @@ import torch.nn as nn
 from tlab.utils.hookpoint import HookPoint
 
 
-@dataclass
-class ModelConfig:
-    torch_seed: int
+class NameRepr(type):
+    def __repr__(cls):
+        return cls.__name__
 
 
-class LabModel(nn.Module):
+class LabModel(nn.Module, metaclass=NameRepr):
     @dataclass
     class Config:
         model_class: Type["LabModel"]
@@ -35,12 +35,15 @@ class LabModel(nn.Module):
                 }
             )
 
-    def __init__(self, cfg: ModelConfig):
+    def __init__(self, cfg: Config):
         super().__init__()
         self.config = cfg
         self.cache = {}
 
         torch.manual_seed(cfg.torch_seed)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.n_params})"
 
     def _init_hooks(self):
         # Call in child class at the end of init
