@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import einops
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import torch
@@ -40,23 +41,16 @@ def update_plots(
     obs: Observations,
     group_idx: int,
     plots=DEF_PLOTS,
-    thinning: Optional[int] = None,
+    thinning: int = 1,
 ):
     if not fig:
         return
     N = len(plots)
     idx = N * group_idx
+    df = pd.DataFrame(obs.data)
     for param in plots:
-        if thinning:
-            fig.data[idx].x = (
-                np.array(obs.indices[param]).reshape(-1, thinning).mean(axis=1)
-            )
-            fig.data[idx].y = (
-                np.array(obs.data[param]).reshape(-1, thinning).mean(axis=1)
-            )
-        else:
-            fig.data[idx].x = np.array(obs.indices[param])
-            fig.data[idx].y = np.array(obs.data[param])
+        fig.data[idx].x = np.array(df.index).reshape(-1, thinning).mean(axis=1)
+        fig.data[idx].y = np.array(df[param]).reshape(-1, thinning).mean(axis=1)
         idx += 1
 
 
@@ -66,13 +60,18 @@ def _scatter(
     name: str,
     tag: str,
     group: Optional[str] = None,
-    thinning: int = 100,
+    thinning: int = 1,
+    smoothening: int = 1,
     **kwargs,
 ):
-    if thinning > 0:
+    if thinning > 1:
         stride = len(x) // thinning
         x = x[::stride]
         y = y[::stride]
+    if smoothening > 1:
+        stride = len(x) // thinning
+        x = x.reshape(-1, smoothening).mean(axis=1)
+        y = y.reshape(-1, smoothening).mean(axis=1)
     legend_params = {}
     if group is not None:
         legend_params["legendgroup"] = group
@@ -138,6 +137,37 @@ def grid_plot(obs: Observations):
     return fig
 
 
+def exp_plot(
+    exp: Experiment,
+    series: List[pd.DataFrame],
+    fields: Tuple[List[str], ...],
+    size: Tuple[int, int] = (1200, 800),
+    title: str = "",
+    log_x: bool = False,
+    log_y: bool = True,
+    smoothening: int = 1,
+):
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    _layout(fig, title, size, log_x=log_x, log_y=log_y)
+    title = title or exp.tag
+
+    for idx, df in enumerate(series):
+        xcon = exp[idx + 1]
+        params = {"group": str(xcon.idx), "tag": xcon.tag, "smoothening": smoothening}
+        for param in fields[0]:
+            trace = _scatter(df.index, df[param], name=param, **params)
+            fig.add_trace(trace)
+        if len(fields) > 1:  # Plot the secondary axes series
+            for param in fields[1]:
+                if "comp_wnorm" in param:
+                    name = param.split(".")[-1]
+                else:
+                    name = param
+                trace = _scatter(df.index, df[param], name=param, **params)
+                fig.add_trace(trace, secondary_y=True)
+    return fig
+
+
 def group_plot(
     obs: Observations,
     fields: Tuple[List[str], ...],
@@ -153,9 +183,12 @@ def group_plot(
     for idx, obs_dict in obs.items():
         tag = obs_dict["tag"]
         params = {"group": str(idx), "tag": tag, "thinning": thinning}
-        x = np.array(range(len(obs_dict[fields[0][0]])))
+        # x = np.array(range(len(obs_dict[fields[0][0]])))
         for param in fields[0]:
-            fig.add_trace(_scatter(x, np.array(obs_dict[param]), name=param, **params))
+            x = obs_dict[param]["indices"]
+            fig.add_trace(
+                _scatter(x, np.array(obs_dict[param]["data"]), name=param, **params)
+            )
         if len(fields) > 1:
             for param in fields[1]:
                 if "comp_wnorm" in param:
@@ -299,6 +332,39 @@ def plot_tensor_vectors(
     title = f"Tensor '{param}' as row vectors, varying: {list(exp.ranges.keys())}"
     fig.update_layout(sliders=[slider], title=title)
     fig.show()
+
+
+def plot_embedding_frames(exp, idx, param: str = "embed.W_E", **kwargs):
+    epochs, frames, traces = [], [], []
+    xcon = exp[idx]
+    for idx, cp_params in enumerate(xcon.load_model_checkpoints(exp.path)):
+        epoch = cp_params["epoch"]
+        data = to_numpy(cp_params["model"][param]).T
+        epochs.append(epoch)
+        frames.append(go.Frame(data=go.Heatmap(z=data), name=epoch))
+
+    # iterate over frames to generate steps... NB frame name...
+    sliders = [
+        {
+            "steps": [
+                {
+                    "args": [
+                        [f.name],
+                        {
+                            "frame": {"duration": 0, "redraw": True},
+                            "mode": "immediate",
+                        },
+                    ],
+                    "label": f.name,
+                    "method": "animate",
+                }
+                for f in frames
+            ],
+        }
+    ]
+
+    fig = go.Figure(data=frames[0].data, frames=frames).update_layout(sliders=sliders)
+    return fig
 
 
 def plot_attention_patterns(
