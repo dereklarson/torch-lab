@@ -152,7 +152,6 @@ class XConfiguration:
         root: Path,
         model: LabModel,
         optim: Optimizer,
-        observations: Observations,
     ):
         filepath = root / f"{self.filebase}_mdl_{optim.epoch:0>6d}.pth"
         save_dict = {
@@ -160,7 +159,6 @@ class XConfiguration:
             "model": model.state_dict(),
             "train_loss": optim.train_losses[-1],
             "test_loss": optim.test_losses[-1],
-            "test_accuracy": observations.data.get("test_accuracy", [0])[-1],
             "epoch": optim.epoch,
         }
         torch.save(save_dict, filepath)

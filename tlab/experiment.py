@@ -20,6 +20,7 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
+import pandas as pd
 from prettytable import PrettyTable
 
 from tlab.models.lab_model import LabModel
@@ -49,8 +50,8 @@ class Experiment:
         self.defaults = defaults or {}
 
         assert "model_class" in defaults, "'defaults' dict must specify 'model_class'"
-        self.model_class = defaults["model_class"]
-        self.valid_params = XConfiguration.valid_params(self.model_class.Config)
+        self.model_class: Type[LabModel] = defaults["model_class"]
+        self.valid_params = XConfiguration.valid_params(self.model_class)
         for key in self.defaults:
             assert key in self.valid_params.keys(), f"{key} is an invalid parameter"
 
@@ -149,7 +150,7 @@ class Experiment:
 
     def summary(self) -> None:
         """Display a pretty summary of the experiment"""
-        print(f"Experiment: '{self.tag}':")
+        print(f"Experiment: '{self.tag}' with {self.count} configurations:")
         table = PrettyTable(["Parameter", "Value"])
         non_defaults = self.ranges.keys() | self.relations.keys()
         for param in sorted(self.defaults.keys() - non_defaults):
@@ -209,9 +210,7 @@ class Experiment:
             idx += 1
             params = self._get_params(variable_dict)
             variables = tuple(variable_dict.keys())
-            yield XConfiguration.from_dict(
-                idx, self.model_class.Config, params, variables
-            )
+            yield XConfiguration.from_dict(idx, self.model_class, params, variables)
 
     def prepare_runs(self) -> XConfiguration:
         """Generate Xconfigurations and initialize the run as well."""
@@ -222,6 +221,38 @@ class Experiment:
 
     def load_state(self, idx: int, epoch: Optional[int] = None):
         return self[idx].get_model_state(self.path, epoch)
+
+    def load_observations(
+        self, verbose: bool = False, filter_strs: Tuple[str, ...] = tuple()
+    ) -> List[pd.DataFrame]:
+        """Load all observations from the same experiment."""
+        series = []
+        for xcon in self.configure():
+            if any([fs not in xcon.tag for fs in filter_strs]):
+                continue
+            data, cfg = Observations.load(self.path, xcon.filebase, verbose=verbose)
+            df = pd.DataFrame(data).assign(
+                **{k: cfg[k] for k in cfg & self.ranges.keys()}
+            )
+            df["exp_idx"] = xcon.idx
+            series.append(df)
+
+        return series
+
+    def load_final_results(
+        self, verbose: bool = False, filter_strs: Tuple[str, ...] = tuple()
+    ) -> pd.DataFrame:
+        """Load only the final values for measurements from an experiment."""
+        raw = Observations.load_obs_group(self.path, verbose, filter_strs)
+        variables = list(self.ranges.keys())
+        metrics = ["test_loss", "test_accuracy", "train_loss"]
+        rows = []
+        for xcon in self.configure():
+            exp_header = {var: xcon.params[var] for var in variables}
+            row = {var: raw[xcon.idx][var][-1] for var in metrics}
+            row.update(exp_header)
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     def dump_json_data(self, dest: Path, name: str = "Default", **kwargs):
         # Dump a list of configurations

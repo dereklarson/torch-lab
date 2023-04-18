@@ -15,7 +15,7 @@ import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import parse
@@ -29,7 +29,6 @@ from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
 STD_OBSERVABLES = [
     "train_loss",
     "test_loss",
-    "train_accuracy",
     "test_accuracy",
 ]
 
@@ -40,15 +39,12 @@ class Observations:
         self._obs_funcs = {}
 
         # 'data' reset during run initialization
-        self.indices: Dict[str, Any] = defaultdict(list)
-        self.data: Dict[str, Any] = defaultdict(list)
+        self.data: Dict[str, Any] = defaultdict(dict)
+        self.tag: str = ""
 
         if init:
-            self.add_standard_observables()
-
-    def add_standard_observables(self) -> None:
-        for observable in STD_OBSERVABLES:
-            self.add_observable(observable, {})
+            for observable in STD_OBSERVABLES:
+                self.add_observable(observable, {})
 
     def add_observable(self, obs_name: str, obs_kwargs: Dict[str, Any]) -> None:
         func = getattr(Observables, obs_name)
@@ -60,11 +56,10 @@ class Observations:
                 self._obs_funcs[obs_name] = functools.partial(
                     func, **{arg: obs_kwargs[arg]}
                 )
-            elif arg == "name":
-                values = obs_kwargs[arg]
-                for val in values:
+            elif arg == "names":
+                for val in obs_kwargs[arg]:
                     fkey = f"{obs_name}_{val}"
-                    self._obs_funcs[fkey] = functools.partial(func, **{arg: val})
+                    self._obs_funcs[fkey] = functools.partial(func, **{"name": val})
             elif arg == "matrix_elements":
                 rows, cols = obs_kwargs[arg]
                 for r in range(rows):
@@ -79,9 +74,8 @@ class Observations:
             logging.warning(f"Too many kwargs for {obs_name} observation: {obs_kwargs}")
 
     def init_run(self, tag: str) -> None:
-        self.indices: Dict[str, Any] = defaultdict(list)
-        self.data: Dict[str, Any] = defaultdict(list)
-        self.data["tag"] = tag
+        self.tag = tag
+        self.data: Dict[str, Dict[int, float]] = defaultdict(dict)
 
     def observe(
         self,
@@ -91,8 +85,7 @@ class Observations:
         **kwargs,
     ) -> None:
         for key, func in self._obs_funcs.items():
-            self.data[key].append(func(model, optim, data, **kwargs))
-            self.indices[key].append(optim.iteration)
+            self.observe_once(key, func, model, optim, data, **kwargs)
 
     def observe_once(
         self,
@@ -103,31 +96,43 @@ class Observations:
         data: Dataset,
         **kwargs,
     ) -> None:
-        self.data[key].append(func(model, optim, data, **kwargs))
-        self.indices[key].append(optim.iteration)
+        self.data[key][optim.iteration] = func(model, optim, data, **kwargs)
 
-    def save(self, root: Path, filebase: str):
+    def save(self, root: Path, filebase: str, header: Dict[str, Any] = None) -> None:
         obs_path = root / f"{filebase}_obs.pkl"
-        with open(obs_path, "wb") as fh:
+        with open(obs_path, "ab") as fh:
+            if header is not None:
+                pickle.dump(header, fh)
             pickle.dump(self.data, fh)
 
     @classmethod
-    def load_observations(cls, root: Path, filebase: str):
+    def load(cls, root: Path, filebase: str, verbose: bool = False):
         """Load one datafile containing observations"""
         obs_path = root / f"{filebase}_obs.pkl"
+        data = defaultdict(dict)
         try:
+            if verbose:
+                print(f"Loading observations {obs_path}...")
             with open(obs_path, "rb") as fh:
-                data = pickle.load(fh)
+                header = pickle.load(fh)
+                while True:
+                    try:
+                        curr = pickle.load(fh)
+                        for key in curr:
+                            data[key].update(curr[key])
+                    except EOFError:
+                        break
         except FileNotFoundError:
             data = {}
             logging.warning(f"Missing {obs_path}")
-        return data
+
+        return data, header
 
     @classmethod
     def load_obs_group(
         cls, root: Path, verbose: bool = False, filter_strs: Tuple[str, ...] = tuple()
     ) -> Dict[int, Dict[str, Any]]:
-        """Load all observations from the same experiment folder."""
+        """Load all observations from the same experiment folder. (deprecated)"""
         data = {}
         for fname in sorted(glob.glob(f"{root}/*_obs.pkl")):
             if any([fs not in fname for fs in filter_strs]):
