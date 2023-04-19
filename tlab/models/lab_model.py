@@ -26,14 +26,14 @@ class LabModel(nn.Module, metaclass=NameRepr):
         torch_seed: int
 
         @classmethod
-        def from_parent(cls, parent):
-            return cls(
-                **{
-                    k: v
-                    for k, v in asdict(parent).items()
-                    if k in inspect.signature(cls).parameters
-                }
-            )
+        def from_parent(cls, parent, **kwargs):
+            parent_args = {
+                k: v
+                for k, v in asdict(parent).items()
+                if k in inspect.signature(cls).parameters
+            }
+            parent_args.update(kwargs)
+            return cls(**parent_args)
 
     def __init__(self, cfg: Config):
         super().__init__()
