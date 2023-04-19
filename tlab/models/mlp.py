@@ -45,17 +45,18 @@ class MLP(LabModel):
         self.layers = nn.ModuleList(layers)
         self.output = Unembed(n_in, cfg.n_outputs)
 
-        self.hook_layer = [HookPoint() for _ in range(len(cfg.mlp_layers))]
+        for idx in range(len(cfg.mlp_layers)):
+            setattr(self, f"hook_layer.{idx}", HookPoint())
         self._init_hooks()
 
     def forward(self, x):
         x = torch.flatten(x, 1)
-        for layer, hook in zip(self.layers, self.hook_layer):
+        for idx, layer in enumerate(self.layers):
             if self.config.activation_type == "ReLU":
                 x = F.relu(layer(x))
             elif self.config.activation_type == "LeakyReLU":
                 x = nn.LeakyReLU(0.01)(layer(x))
-            x = hook(x)
+            x = getattr(self, f"hook_layer.{idx}")(x)
         if self.config.use_dropout:
             x = F.dropout(x, training=self.training)
         x = self.output(x)
@@ -68,7 +69,7 @@ class EmbedMLP(LabModel):
         d_embed: int
         mlp_layers: List[int]
         n_vocab: int
-        n_inputs: int
+        n_ctx: int
         n_outputs: int
         use_bias: bool = True
         layer_type: str = "Linear"
@@ -79,7 +80,8 @@ class EmbedMLP(LabModel):
         super().__init__(cfg)
 
         self.embed = Embed(n_vocab=cfg.n_vocab, d_embed=cfg.d_embed)
-        self.mlp = MLP(MLP.Config.from_parent(cfg))
+        mlp_config = MLP.Config.from_parent(cfg, n_inputs=cfg.n_ctx * cfg.d_embed)
+        self.mlp = MLP(mlp_config)
 
         self.hook_embed = HookPoint()
         self._init_hooks()
