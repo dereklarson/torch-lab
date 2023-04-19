@@ -48,7 +48,7 @@ class Transformer(LabModel):
 
         self.embed = Embed(n_vocab=cfg.n_vocab, d_embed=cfg.d_embed)
         if cfg.use_position:
-            self.position_embed = PositionEmbed(cfg)
+            self.position_embed = PositionEmbed(n_ctx=cfg.n_ctx, d_embed=cfg.d_embed)
 
         # TODO Consider allowing variants to the standard TransformerBlock
         block = TransformerBlock
