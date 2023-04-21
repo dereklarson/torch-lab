@@ -5,7 +5,8 @@ should be available for all models.
 """
 import inspect
 from dataclasses import asdict, dataclass
-from typing import List, Type
+from functools import cached_property
+from typing import Any, Dict, List, Type
 
 import numpy as np
 import torch
@@ -45,6 +46,21 @@ class LabModel(nn.Module, metaclass=NameRepr):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.n_params})"
 
+    def __getitem__(self, key: str):
+        """Get model parameters with convenient, short expression."""
+        return self._lookup[key]
+
+    @cached_property
+    def _lookup(self) -> Dict[str, torch.Tensor]:
+        """Create a cached lookup table for parameters, using short names."""
+        lookup = {}
+        for name, param in self.named_parameters():
+            key = name.split(".")[-1]
+            # TODO Do some auto enumeration for name overlap
+            assert key not in lookup, f"Param lookup already contains {key}"
+            lookup[key] = param.data
+        return lookup
+
     def _init_hooks(self):
         # Call in child class at the end of init
         for name, module in self.named_modules():
@@ -68,15 +84,15 @@ class LabModel(nn.Module, metaclass=NameRepr):
         )
 
     @property
-    def hook_points(self):
+    def hook_points(self) -> List[nn.Module]:
         return [module for name, module in self.named_modules() if "hook" in name]
 
-    def remove_all_hooks(self):
+    def remove_all_hooks(self) -> None:
         for hp in self.hook_points:
             hp.remove_hooks("fwd")
             hp.remove_hooks("bwd")
 
-    def cache_all(self, cache, include_backward=False):
+    def cache_all(self, cache, include_backward=False) -> None:
         # Caches all activations wrapped in a HookPoint
         def save_hook(tensor, name):
             cache[name] = tensor.detach()
@@ -88,3 +104,10 @@ class LabModel(nn.Module, metaclass=NameRepr):
             hp.add_hook(save_hook, "fwd")
             if include_backward:
                 hp.add_hook(save_hook_back, "bwd")
+
+    def activate(self, inputs) -> Dict[str, torch.Tensor]:
+        cache = {}
+        self.cache_all(cache)
+        outputs = self(inputs)
+        self.remove_all_hooks()
+        return outputs, cache
