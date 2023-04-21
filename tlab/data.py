@@ -136,6 +136,15 @@ class Dataset:
 
         return vocab
 
+    @classmethod
+    def nucleus(cls, main_cfg: DataConfig, **kwargs):
+        """Create the samples and labels for input ints smaller than modulus."""
+        vocab = set(range(main_cfg.result_mod))
+        operation = _get_operation(main_cfg)
+        inputs = list(map(list, itertools.product(vocab, repeat=main_cfg.value_count)))
+        labels = np.apply_along_axis(operation, 1, inputs)
+        return torch.tensor(inputs).to("cuda"), torch.tensor(labels).to("cuda")
+
 
 def _get_operation(cfg: DataConfig):
     if cfg.operation == "add":
