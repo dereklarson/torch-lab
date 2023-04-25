@@ -49,8 +49,11 @@ def update_plots(
     idx = N * group_idx
     df = pd.DataFrame(obs.data)
     for param in plots:
-        fig.data[idx].x = np.array(df.index).reshape(-1, thinning).mean(axis=1)
-        fig.data[idx].y = np.array(df[param]).reshape(-1, thinning).mean(axis=1)
+        series = df[param].dropna().sort_index()
+        x = series.index.to_numpy()
+        y = series.to_numpy()
+        fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
+        fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
         idx += 1
 
 
