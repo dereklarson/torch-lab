@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tlab.models.beta_components import MixLayer, MultLayer, SimpleMultLayer
+from tlab.models.beta_components import MultLayer, SimpleMultLayer
 from tlab.models.components import Embed, LinearLayer, Unembed
 from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
@@ -31,9 +31,7 @@ class MLP(LabModel):
         n_in = cfg.n_inputs
         layers = []
         for n_out in cfg.mlp_layers:
-            if cfg.layer_type == "Mix":
-                layers.append(MixLayer(n_in, n_out, cfg.use_bias))
-            elif cfg.layer_type == "Mult":
+            if cfg.layer_type == "Mult":
                 layers.append(MultLayer(n_in, n_out, cfg.use_bias))
             elif cfg.layer_type == "SimpleMult":
                 layers.append(SimpleMultLayer(n_in, n_out))

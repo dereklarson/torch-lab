@@ -57,21 +57,6 @@ class SimpleMultLayer(nn.Module):
         return x
 
 
-class MixLayer(nn.Module):
-    def __init__(self, n_in: int, n_out: int, use_bias: bool = True):
-        super().__init__()
-        assert (n_out % 2) == 0, f"MixLayer n_out must be even, not {n_out}"
-        self.linear = LinearLayer(n_in, n_out // 2, use_bias)
-        self.mix = MultLayer(n_in, n_out // 2, use_bias)
-
-    def forward(self, x):
-        l_out = F.relu(self.linear(x))
-        m_out = F.relu(self.mix(x))
-        # Combine the two matrix outputs along the features dimension
-        x = torch.cat((l_out, m_out), dim=1)
-        return x
-
-
 class EmbeddingAttention(nn.Module):
     def __init__(self, cfg: LabModel.Config):
         super().__init__()
