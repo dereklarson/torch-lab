@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from tlab.utils.analysis import distinguish_signs
 
@@ -43,25 +44,37 @@ class LinearLayer(nn.Module):
 class Embed(nn.Module):
     def __init__(self, n_vocab: int, d_embed: int):
         super().__init__()
-        self.W_E = nn.Parameter(torch.randn(n_vocab, d_embed) / np.sqrt(d_embed))
+        self.weight = nn.Parameter(torch.randn(n_vocab, d_embed) / np.sqrt(d_embed))
 
     def forward(self, x):
-        return self.W_E[x, :]
+        return self.weight[x, :]
 
 
 class Unembed(nn.Module):
     def __init__(self, n_in: int, n_outputs: int):
         super().__init__()
-        self.W_U = nn.Parameter(torch.randn(n_outputs, n_in) / np.sqrt(n_in))
+        self.weight = nn.Parameter(torch.randn(n_outputs, n_in) / np.sqrt(n_in))
 
     def forward(self, x):
-        return x @ self.W_U.T
+        return x @ self.weight.T
 
 
 class PositionEmbed(nn.Module):
     def __init__(self, n_ctx: int, d_embed: int):
         super().__init__()
-        self.W_pos = nn.Parameter(torch.randn(n_ctx, d_embed) / np.sqrt(d_embed))
+        self.weight = nn.Parameter(torch.randn(n_ctx, d_embed) / np.sqrt(d_embed))
 
     def forward(self, x):
-        return x + self.W_pos
+        return x + self.weight
+
+
+class LayerNorm(nn.Module):
+    """As torch.nn.LayerNorm but with an optional bias."""
+
+    def __init__(self, n_dim: int, bias: bool = False):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(n_dim))
+        self.bias = nn.Parameter(torch.zeros(n_dim)) if bias else None
+
+    def forward(self, input):
+        return F.layer_norm(input, self.weight.shape, self.weight, self.bias, eps=1e-5)

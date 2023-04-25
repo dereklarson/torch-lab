@@ -1,7 +1,6 @@
 """Optimizer contains the configuration and functionality for operating the training.
 """
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
@@ -15,12 +14,14 @@ from tlab.utils.analysis import self_similarity, sign_similarity
 
 @dataclass
 class OptimConfig:
-    learning_rate: float = 1e-3
-    weight_decay: float = 1.0
     n_epochs: int = 10000
-    manual_decay: float = 0.0
+    learning_rate: float = 1e-3
+    warmup_iters: int = 10
+    final_lr: float = 0.1
+    weight_decay: float = 1.0
     adam_betas: tuple = (0.90, 0.98)
-    fixed_wnorm: bool = False  # Rescale weights after each update so norm is fixed
+    torch_dtype: str = "float16"
+    grad_clip: float = 0.0
     shuffle_threshold: float = 0.0  # Perform an update to reduce sign similarity
     repulsion_strength: float = 0.0  # Encourages orthogonality in weight matrices
     repulsion_decay: float = 1.0  # Multiplies repulsive strength every epoch
@@ -42,27 +43,16 @@ class Optimizer:
             betas=cfg.adam_betas,
         )
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lambda step: min(step / 10, 1)
+            self.optimizer, lambda step: min(step / cfg.warmup_iters, 1)
         )
+
+        # initialize a GradScaler. If enabled=False scaler is a no-op
+        self.scaler = torch.cuda.amp.GradScaler(enabled=(cfg.torch_dtype == "float16"))
 
         self.epoch = 0
         self.iteration = 0
         self.train_losses = []
         self.test_losses = []
-
-    def measure_loss(self, model: LabModel, data: Dataset, device=None):
-        device = device or self.device
-        train_logits = model(data.train.inputs)
-        train_loss = self.loss_func(
-            train_logits, data.train.labels[:, None], device=device
-        )
-        test_logits = model(data.test.inputs)
-        test_loss = self.loss_func(
-            test_logits, data.test.labels[:, None], device=device
-        )
-        self.train_losses.append(train_loss.item())
-        self.test_losses.append(test_loss.item())
-        return train_loss, test_loss
 
     def epoch_step(self, model: LabModel, data: Dataset, device=None) -> None:
         """Process one training step: handle loss, learning_rate, etc
@@ -70,17 +60,11 @@ class Optimizer:
         TODO: Find a clean way to fold into batched training
         """
         self.optimizer.zero_grad()
-        train_loss, _ = self.measure_loss(model=model, data=data, device=device)
+        train_loss = self.loss_func(model(data.train.inputs), data.train.labels)
+        self.train_losses.append(train_loss.item())
         train_loss.backward()
         self.optimizer.step()
         self.scheduler.step()
-
-        if self.config.manual_decay:
-            with torch.no_grad():
-                for param in model.parameters():
-                    param -= (
-                        self.config.learning_rate * self.config.manual_decay * param
-                    )
 
         if self.config.repulsion_strength > 0:
             params = getattr(self, "repulsion_params", [])
@@ -127,12 +111,19 @@ class Optimizer:
 
     def step(self, model: LabModel, inputs, labels) -> None:
         self.optimizer.zero_grad()
-        train_logits = model(inputs)
-        train_loss = self.loss_func(train_logits, labels)
+        train_loss = self.loss_func(model(inputs), labels)
         self.train_losses.append(train_loss.item())
-        train_loss.backward()
-        self.optimizer.step()
+
+        self.scaler.scale(train_loss).backward()
+        # clip the gradient
+        if self.config.grad_clip != 0.0:
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), self.config.grad_clip)
+        # step the optimizer and scaler if training in fp16
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
         self.scheduler.step()
+
         self.iteration += 1
 
     def end_epoch(self, model: LabModel, test_loader) -> None:
