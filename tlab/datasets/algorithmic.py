@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
+from tlab.datasets.dataset import DataDiv, Dataset
 from tlab.utils.util import to_numpy
 
 OPERATION_MAP = {
@@ -16,45 +17,23 @@ OPERATION_MAP = {
 }
 
 
-@dataclass
-class DataConfig:
-    data_seed: int  # Numpy RNG seed for generating data (separate from PyTorch)
-    value_range: int = 10  # Range of integers involved in the arithmetic
-    result_mod: int = 10  # Apply modulo to the result
-    operation: str = "add"  # Numerical operation to use for label calculation
-    training_fraction: float = 0.7  # Amount of generated data put into training set
-    dist_style: str = "normal"  # Keyword to trigger different distributions of data
-    value_count: int = 2  # How many input values (i.e. Transformer context)
-    # 'base' will default to 'value_range' if not set
-    base: Optional[int] = None  # Base of symbols, e.g. base 16 is hexadecimal.
-    use_operators: bool = False  # Whether to include the operator tokens
-    range_dict: Dict[str, Tuple] = None  # Option to broadcast to multiple configs
+class Algorithmic(Dataset):
+    @dataclass
+    class Config(Dataset.Config):
+        value_range: int = 10  # Range of integers involved in the arithmetic
+        result_mod: int = 10  # Apply modulo to the result
+        operation: str = "add"  # Numerical operation to use for label calculation
+        training_fraction: float = 0.7  # Amount of generated data put into training set
+        dist_style: str = "normal"  # Keyword to trigger different distributions of data
+        value_count: int = 2  # How many input values (i.e. Transformer context)
+        # 'base' will default to 'value_range' if not set
+        base: Optional[int] = None  # Base of symbols, e.g. base 16 is hexadecimal.
+        use_operators: bool = False  # Whether to include the operator tokens
+        range_dict: Dict[str, Tuple] = None  # Option to broadcast to multiple configs
 
-
-class DataDiv:
-    def __init__(
-        self, inputs: List[Tuple[int, ...]], labels: List[int], to_cuda: bool = True
-    ) -> None:
-        self.inputs = inputs
-        self.labels = labels
-        if to_cuda:
-            self.inputs = torch.tensor(inputs).to("cuda")
-            self.labels = torch.tensor(labels).to("cuda")
-
-    def __len__(self):
-        return len(self.inputs)
-
-    def head(self, n: int = 10) -> List[Tuple]:
-        output = []
-        for idx, row in enumerate(self.inputs[:n]):
-            output.append((to_numpy(row), int(self.labels[idx])))
-        return output
-
-
-class Dataset:
     def __init__(
         self,
-        cfgs: List[DataConfig],
+        cfgs: List[Config],
         vocabulary: List[str],
         train: DataDiv,
         test: DataDiv,
@@ -73,13 +52,13 @@ class Dataset:
             print(f"{in_str} -> {self.vocabulary[label]}")
 
     @classmethod
-    def from_config(cls, main_cfg: DataConfig, to_cuda: bool = True) -> "Dataset":
+    def from_config(cls, main_cfg: Config, to_cuda: bool = True) -> "Dataset":
         cfgs = cls._expand_params(main_cfg)
         vocabulary = cls.create_vocabulary(main_cfg)
         use_operators = any(cfg.use_operators for cfg in cfgs)
 
-        train_inputs, train_labels = [], []
-        test_inputs, test_labels = [], []
+        train_inputs, train_targets = [], []
+        test_inputs, test_targets = [], []
         np.random.seed(main_cfg.data_seed)
         for cfg in cfgs:
             generator = _asymm if cfg.dist_style == "asymm" else _uniform
@@ -88,9 +67,9 @@ class Dataset:
             # Apply label first, which is easier before inserting operator tokens
             operation = _get_operation(cfg)
             if curr_train_in:
-                train_labels.extend(np.apply_along_axis(operation, 1, curr_train_in))
+                train_targets.extend(np.apply_along_axis(operation, 1, curr_train_in))
             if curr_test_in:
-                test_labels.extend(np.apply_along_axis(operation, 1, curr_test_in))
+                test_targets.extend(np.apply_along_axis(operation, 1, curr_test_in))
             if use_operators:
                 op_token_idx = vocabulary.index(OPERATION_MAP.get(cfg.operation, "XX"))
                 _insert_op(curr_train_in, op_token_idx)
@@ -103,28 +82,28 @@ class Dataset:
             _append_eq(train_inputs, eq_token_idx)
             _append_eq(test_inputs, eq_token_idx)
 
-        train = DataDiv(train_inputs, train_labels, to_cuda)
-        test = DataDiv(test_inputs, test_labels, to_cuda)
-        return Dataset(cfgs, vocabulary, train, test)
+        train = DataDiv(train_inputs, train_targets, to_cuda)
+        test = DataDiv(test_inputs, test_targets, to_cuda)
+        return cls(cfgs, vocabulary, train, test)
 
     @classmethod
-    def _expand_params(cls, cfg: DataConfig) -> List[DataConfig]:
+    def _expand_params(cls, cfg: Config) -> List[Config]:
         if not cfg.range_dict:
             return [cfg]
-        assert len(cfg.range_dict) == 1, "Only single ranges in DataConfig for now"
+        assert len(cfg.range_dict) == 1, "Only single ranges in Config for now"
         cfgs = []
         for key, val_range in cfg.range_dict.items():
             for val in val_range:
                 base = asdict(cfg)
                 base[key] = val
-                cfgs.append(DataConfig(**base))
+                cfgs.append(cls.Config(**base))
         return cfgs
 
     @classmethod
-    def create_vocabulary(cls, main_cfg: DataConfig, **kwargs) -> List[str]:
+    def create_vocabulary(cls, main_cfg: Config, **kwargs) -> List[str]:
         cfgs = cls._expand_params(main_cfg)
         bases = {cfg.base or cfg.value_range for cfg in cfgs}
-        assert len(bases) == 1, "DataConfigs have unequal bases"
+        assert len(bases) == 1, "Configs have unequal bases"
         base = bases.pop()
 
         vocab = list(map(str, range(base)))
@@ -137,16 +116,16 @@ class Dataset:
         return vocab
 
     @classmethod
-    def nucleus(cls, main_cfg: DataConfig, **kwargs):
-        """Create the samples and labels for input ints smaller than modulus."""
+    def nucleus(cls, main_cfg: Config, **kwargs):
+        """Create the samples and targets for input ints smaller than modulus."""
         vocab = set(range(main_cfg.result_mod))
         operation = _get_operation(main_cfg)
         inputs = list(map(list, itertools.product(vocab, repeat=main_cfg.value_count)))
-        labels = np.apply_along_axis(operation, 1, inputs)
-        return torch.tensor(inputs).to("cuda"), torch.tensor(labels).to("cuda")
+        targets = np.apply_along_axis(operation, 1, inputs)
+        return torch.tensor(inputs).to("cuda"), torch.tensor(targets).to("cuda")
 
 
-def _get_operation(cfg: DataConfig):
+def _get_operation(cfg: Algorithmic.Config):
     if cfg.operation == "add":
         operation = lambda x: sum(x) % cfg.result_mod
     elif cfg.operation == "sub":
@@ -175,7 +154,7 @@ def _append_eq(data: List[List[int]], eq_token_idx: int) -> List[List[int]]:
         row.append(eq_token_idx)
 
 
-def _uniform(cfg: DataConfig) -> Tuple[List[List[int]], List[List[int]]]:
+def _uniform(cfg: Algorithmic.Config) -> Tuple[List[List[int]], List[List[int]]]:
     """Return all tuples of integers up to a maximum, shuffled and split into train/test."""
     vocab = set(range(cfg.value_range))
     examples = list(map(list, itertools.product(vocab, repeat=cfg.value_count)))
@@ -184,7 +163,7 @@ def _uniform(cfg: DataConfig) -> Tuple[List[List[int]], List[List[int]]]:
     return examples[:div], examples[div:]
 
 
-def _asymm(cfg: DataConfig) -> Tuple[List, List]:
+def _asymm(cfg: Algorithmic.Config) -> Tuple[List, List]:
     """Return all pairs of integers (i, j) up to a maximum. Train group has all j >= i."""
     assert cfg.value_count == 2, f"Can't use asymm setting for value_count != 2"
     train = [[i, j] for i in range(cfg.value_range) for j in range(i, cfg.value_range)]

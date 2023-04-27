@@ -21,7 +21,7 @@ import numpy as np
 import parse
 import torch
 
-from tlab.data import DataDiv, Dataset
+from tlab.datasets.algorithmic import DataDiv, Dataset
 from tlab.models.lab_model import LabModel
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
@@ -176,8 +176,8 @@ class Observables:
         return np.mean(optim.train_losses[-10:])
 
     @staticmethod
-    def test_loss(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
-        return optim.test_losses[-1]
+    def test_loss(model: LabModel, optim: Optimizer, data: Dataset, **kwargs) -> float:
+        return optim.loss_func(model(data.test.inputs), data.test.targets).item()
 
     @staticmethod
     def test_loss_batch(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
@@ -190,7 +190,7 @@ class Observables:
     def train_accuracy(
         model: LabModel, optim: Optimizer, data: Dataset, **kwargs
     ) -> float:
-        return _accuracy(model, data.train.inputs, data.train.labels)
+        return _accuracy(model, data.train.inputs, data.train.targets)
 
     @staticmethod
     def test_accuracy_batch(
@@ -230,7 +230,7 @@ class Observables:
     def test_accuracy(
         model: LabModel, optim: Optimizer, data: Dataset, **kwargs
     ) -> float:
-        return _accuracy(model, data.test.inputs, data.test.labels)
+        return _accuracy(model, data.test.inputs, data.test.targets)
 
     @staticmethod
     def embed_g1(model: LabModel, optim: Optimizer, data, **kwargs) -> float:

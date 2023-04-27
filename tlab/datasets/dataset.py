@@ -32,3 +32,23 @@ class Dataset(metaclass=NameRepr):
     @classmethod
     def from_config(cls, cfg: Config, to_cuda: bool = True) -> "Dataset":
         pass
+
+
+class DataDiv:
+    def __init__(
+        self, inputs: List[Tuple[int, ...]], targets: List[int], to_cuda: bool = True
+    ) -> None:
+        self.inputs = inputs
+        self.targets = targets
+        if to_cuda:
+            self.inputs = torch.tensor(inputs).to("cuda")
+            self.targets = torch.tensor(targets).to("cuda")
+
+    def __len__(self):
+        return len(self.inputs)
+
+    def head(self, n: int = 10) -> List[Tuple]:
+        output = []
+        for idx, row in enumerate(self.inputs[:n]):
+            output.append((to_numpy(row), int(self.targets[idx])))
+        return output

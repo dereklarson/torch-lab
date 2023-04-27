@@ -1,15 +1,16 @@
 """Optimizer contains the configuration and functionality for operating the training.
 """
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from tlab.datasets import Dataset
+from tlab.datasets.dataset import DataDiv, Dataset
 from tlab.models.lab_model import LabModel
 from tlab.utils.analysis import self_similarity, sign_similarity
+from tlab.utils.util import gpu_mem
 
 
 @dataclass
@@ -52,16 +53,19 @@ class Optimizer:
         self.epoch = 0
         self.iteration = 0
         self.train_losses = []
-        self.test_losses = []
 
-    def epoch_step(self, model: LabModel, data: Dataset, device=None) -> None:
+    def measure_loss(self, model: LabModel, train: DataDiv) -> None:
+        train_loss = self.loss_func(model(train.inputs), train.targets)
+        self.train_losses.append(train_loss.item())
+        return train_loss
+
+    def epoch_step(self, model: LabModel, train: DataDiv, device=None) -> None:
         """Process one training step: handle loss, learning_rate, etc
         Use for full batch training.
         TODO: Find a clean way to fold into batched training
         """
         self.optimizer.zero_grad()
-        train_loss = self.loss_func(model(data.train.inputs), data.train.labels)
-        self.train_losses.append(train_loss.item())
+        train_loss = self.measure_loss(model, train)
         train_loss.backward()
         self.optimizer.step()
         self.scheduler.step()
@@ -109,9 +113,9 @@ class Optimizer:
                 )
                 tensor[sim_rows] = new_rows.to("cuda")
 
-    def step(self, model: LabModel, inputs, labels) -> None:
+    def step(self, model: LabModel, inputs, targets) -> None:
         self.optimizer.zero_grad()
-        train_loss = self.loss_func(model(inputs), labels)
+        train_loss = self.loss_func(model(inputs), targets)
         self.train_losses.append(train_loss.item())
 
         self.scaler.scale(train_loss).backward()
@@ -136,42 +140,18 @@ class Optimizer:
         """Process one training step: handle loss, learning_rate, etc"""
         model.eval()
         batch_losses = []
-        for inputs, labels in test_loader:
-            batch_losses.append(self.loss_func(model(inputs), labels[:, None]).item())
+        for inputs, targets in test_loader:
+            batch_losses.append(self.loss_func(model(inputs), targets[:, None]).item())
 
-        self.test_losses.append(np.mean(batch_losses))
         self.epoch += 1
 
-    @property
-    def display(self) -> Dict[str, str]:
-        """Postfix for TQDM progress bar, to track key variables"""
+    def display(self, entries: Tuple[str, ...] = tuple()) -> Dict[str, str]:
+        """Postfix for TQDM progress bar, to track key optimization variables."""
         display_entries = dict(
-            gpu=f"{gpu_mem():.3f}",
-            lr=f"{self.scheduler.get_last_lr()[0]}",
             train=f"{np.log(self.train_losses[-1]):.4f}",
         )
-        if len(self.test_losses) > 0:
-            display_entries["test"] = f"{np.log(self.test_losses[-1]):.4f}"
+        if "lr" in entries:
+            display_entries["lr"] = f"{self.scheduler.get_last_lr()[0]}"
+        if "gpu" in entries:
+            display_entries["gpu"] = f"{gpu_mem():.3f}"
         return display_entries
-
-    @property
-    def epoch_display(self) -> Dict[str, str]:
-        """Postfix for TQDM progress bar, to track key variables"""
-        display_entries = dict(
-            gpu=f"{gpu_mem():.3f}",
-            train=f"{np.log(self.train_losses[-1]):.4f}",
-        )
-        if len(self.test_losses) > 0:
-            display_entries["test"] = f"{np.log(self.test_losses[-1]):.4f}"
-        return display_entries
-
-
-def gpu_mem() -> float:
-    return torch.cuda.memory_allocated() / 1e9
-
-
-def cross_entropy(logits: torch.Tensor, labels: torch.Tensor, device="cuda"):
-    logprobs = F.log_softmax(logits.to(torch.float64), dim=-1)
-    prediction_logprobs = torch.gather(logprobs, index=labels, dim=-1)
-    loss = -torch.mean(prediction_logprobs)
-    return loss
