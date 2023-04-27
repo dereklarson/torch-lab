@@ -72,12 +72,12 @@ class Experiment:
                 return cfg
 
     @property
-    def path(self) -> Path:
-        return self.root_path / self.tag
-
-    @property
     def count(self) -> int:
         return len(list(self._product()))
+
+    @property
+    def path(self) -> Path:
+        return self.root_path / self.tag
 
     @classmethod
     def _load(cls, path: Path) -> "Experiment":
@@ -89,6 +89,9 @@ class Experiment:
     def load(cls, name: str) -> "Experiment":
         """Load by name, using default root path"""
         return cls._load(cls.root_path / name)
+
+    def change_root(self, dir_name: str) -> None:
+        self.root_path = Path(dir_name)
 
     def save(self) -> None:
         with open(self.path / self.exp_file, "wb") as fh:

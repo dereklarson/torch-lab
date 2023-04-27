@@ -13,6 +13,10 @@ class StopExecution(Exception):
         pass
 
 
+def gpu_mem() -> float:
+    return torch.cuda.memory_allocated() / 1e9
+
+
 def gen_sign_combinations(n_col: int) -> np.ndarray:
     """Return an array with 2^n rows of all sign combinations of n values"""
     return np.array(np.meshgrid(*([[-1, 1]] * n_col))).T.reshape(-1, n_col)
