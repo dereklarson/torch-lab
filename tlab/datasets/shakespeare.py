@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from tlab.datasets.dataset import Dataset
+from tlab.datasets.dataset import DataBatch, Dataset
 from tlab.utils.util import to_numpy
 
 
@@ -15,6 +15,7 @@ class Shakespeare(Dataset):
     class Config(Dataset.Config):
         batch_size: int = 32
         block_size: int = 256
+        eval_iters: int = 200
 
     def __init__(self, cfg: Config):
         self.config = cfg
@@ -54,7 +55,12 @@ class Shakespeare(Dataset):
         x, y = x.pin_memory().to("cuda", non_blocking=True), y.pin_memory().to(
             "cuda", non_blocking=True
         )
-        return x, y
+        return DataBatch(x, y)
+
+    @property
+    def val_loader(self):
+        for _ in range(self.config.eval_iters):
+            yield self.get_batch("val")
 
     # def stoi(self, char: str) -> int:
     #     return self.meta["stoi"][char]

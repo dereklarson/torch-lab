@@ -19,7 +19,7 @@ from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis
 from tlab.utils.util import to_numpy
 
-DEF_PLOTS = ["train_loss", "test_loss", "test_accuracy"]
+DEF_PLOTS = ["train_loss", "val_loss", "val_accuracy"]
 
 
 def live_plot(**kwargs):
@@ -110,7 +110,7 @@ def plot_loss(optim: Optimizer, log_x=False, log_y=True) -> go.Figure:
     )
     x = np.array(range(len(optim.train_losses)))
     fig.add_trace(_scatter(x, optim.train_losses, name=f"Train"))
-    fig.add_trace(_scatter(x, optim.test_losses, name=f"Test"))
+    fig.add_trace(_scatter(x, optim.val_losses, name=f"Test"))
     return fig
 
 
@@ -131,7 +131,7 @@ def grid_plot(obs: Observations):
         loc = {"row": idx // shape[-1] + 1, "col": idx % shape[-1] + 1}
         x = np.array(range(len(obs_dict["train_loss"])))
         y_train = np.array(obs_dict["train_loss"])
-        y_test = np.array(obs_dict["test_loss"])
+        y_test = np.array(obs_dict["val_loss"])
         norm = (np.array(obs_dict["weight_norm"]),)
 
         fig.add_trace(_scatter(x, y_train, name="Train", tag=tag), **loc)

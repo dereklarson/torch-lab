@@ -21,15 +21,15 @@ import numpy as np
 import parse
 import torch
 
-from tlab.datasets.algorithmic import DataDiv, Dataset
+from tlab.datasets.algorithmic import DataBatch, Dataset
 from tlab.models.lab_model import LabModel
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
 
 STD_OBSERVABLES = [
     "train_loss",
-    "test_loss",
-    "test_accuracy",
+    "val_loss",
+    "val_accuracy",
 ]
 
 
@@ -149,10 +149,10 @@ class Observations:
         return data
 
 
-def _accuracy(model: LabModel, inputs, targets):
-    logits = model(inputs)
+def _accuracy(model: LabModel, batch: DataBatch):
+    logits = model(batch.inputs)
     _, predictions = torch.max(logits.to(torch.float64), dim=-1)
-    accuracy = (predictions == targets).sum().item() / targets.numel()
+    accuracy = (predictions == batch.targets).sum().item() / batch.targets.numel()
     return accuracy
 
 
@@ -172,42 +172,36 @@ class Observables:
         return optim.train_losses[-1]
 
     @staticmethod
-    def train_loss_batch(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
-        return np.mean(optim.train_losses[-10:])
-
-    @staticmethod
-    def test_loss(model: LabModel, optim: Optimizer, data: Dataset, **kwargs) -> float:
-        return optim.loss_func(model(data.test.inputs), data.test.targets).item()
-
-    @staticmethod
-    def test_loss_batch(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def val_loss(
+        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
+    ) -> float:
         losses = []
-        for inputs, targets in data:
-            losses.append(optim.loss_func(model(inputs), targets[:, None]).item())
+        for batch in dataset.val_loader:
+            losses.append(optim.loss_func(model(batch.inputs), batch.targets).item())
         return np.mean(losses)
 
     @staticmethod
     def train_accuracy(
-        model: LabModel, optim: Optimizer, data: Dataset, **kwargs
+        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
     ) -> float:
-        return _accuracy(model, data.train.inputs, data.train.targets)
+        return _accuracy(model, dataset.get_batch("train"))
 
     @staticmethod
-    def test_accuracy_batch(
-        model: LabModel, optim: Optimizer, data: tuple, **kwargs
+    def val_accuracy(
+        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
     ) -> float:
         accuracies = []
-        for inputs, targets in data:
-            accuracies.append(_accuracy(model, inputs, targets))
+        for batch in dataset.val_loader:
+            accuracies.append(_accuracy(model, batch))
         return np.mean(accuracies)
 
     @staticmethod
-    def error_rate_batch(
-        model: LabModel, optim: Optimizer, data: tuple, **kwargs
+    def error_rate(
+        model: LabModel, optim: Optimizer, dataset: tuple, **kwargs
     ) -> float:
         results = []
-        for inputs, targets in data:
-            results.append(1 - _accuracy(model, inputs, targets))
+        for batch in dataset.val_loader:
+            results.append(1 - _accuracy(model, batch))
         return np.mean(results)
 
     @staticmethod
@@ -225,12 +219,6 @@ class Observables:
         normed_similarity = torch.linalg.norm(self_similarity(tensor))
         normed_similarity /= tensor.shape[0]
         return float(normed_similarity)
-
-    @staticmethod
-    def test_accuracy(
-        model: LabModel, optim: Optimizer, data: Dataset, **kwargs
-    ) -> float:
-        return _accuracy(model, data.test.inputs, data.test.targets)
 
     @staticmethod
     def embed_g1(model: LabModel, optim: Optimizer, data, **kwargs) -> float:

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from tlab.datasets.dataset import DataDiv, Dataset
+from tlab.datasets.dataset import DataBatch, Dataset
 from tlab.utils.util import to_numpy
 
 OPERATION_MAP = {
@@ -35,16 +35,13 @@ class Algorithmic(Dataset):
         self,
         cfgs: List[Config],
         vocabulary: List[str],
-        train: DataDiv,
-        test: DataDiv,
+        train: DataBatch,
+        val: DataBatch,
     ) -> None:
         self.cfgs = cfgs
         self.vocabulary = vocabulary
         self.train = train
-        self.test = test
-
-    def stats(self) -> None:
-        print(f"{len(self.train)} training examples, {len(self.test)} test examples")
+        self.val = val
 
     def head(self, n: int = 10, subset: str = "train") -> None:
         for input, label in getattr(self, subset).head(n):
@@ -58,33 +55,43 @@ class Algorithmic(Dataset):
         use_operators = any(cfg.use_operators for cfg in cfgs)
 
         train_inputs, train_targets = [], []
-        test_inputs, test_targets = [], []
+        val_inputs, val_targets = [], []
         np.random.seed(main_cfg.data_seed)
         for cfg in cfgs:
             generator = _asymm if cfg.dist_style == "asymm" else _uniform
-            curr_train_in, curr_test_in = generator(cfg)
+            curr_train_in, curr_val_in = generator(cfg)
 
             # Apply label first, which is easier before inserting operator tokens
             operation = _get_operation(cfg)
             if curr_train_in:
                 train_targets.extend(np.apply_along_axis(operation, 1, curr_train_in))
-            if curr_test_in:
-                test_targets.extend(np.apply_along_axis(operation, 1, curr_test_in))
+            if curr_val_in:
+                val_targets.extend(np.apply_along_axis(operation, 1, curr_val_in))
             if use_operators:
                 op_token_idx = vocabulary.index(OPERATION_MAP.get(cfg.operation, "XX"))
                 _insert_op(curr_train_in, op_token_idx)
-                _insert_op(curr_test_in, op_token_idx)
+                _insert_op(curr_val_in, op_token_idx)
             train_inputs.extend(curr_train_in)
-            test_inputs.extend(curr_test_in)
+            val_inputs.extend(curr_val_in)
 
         if use_operators:
             eq_token_idx = vocabulary.index("=")
             _append_eq(train_inputs, eq_token_idx)
-            _append_eq(test_inputs, eq_token_idx)
+            _append_eq(val_inputs, eq_token_idx)
 
-        train = DataDiv(train_inputs, train_targets, to_cuda)
-        test = DataDiv(test_inputs, test_targets, to_cuda)
-        return cls(cfgs, vocabulary, train, test)
+        train = DataBatch(train_inputs, train_targets).to_cuda()
+        val = DataBatch(val_inputs, val_targets).to_cuda()
+        return cls(cfgs, vocabulary, train, val)
+
+    def get_batch(self, split: str) -> DataBatch:
+        if split == "train":
+            return self.train
+        else:
+            return self.val
+
+    @property
+    def val_loader(self):
+        return [self.val]
 
     @classmethod
     def _expand_params(cls, cfg: Config) -> List[Config]:
@@ -155,7 +162,7 @@ def _append_eq(data: List[List[int]], eq_token_idx: int) -> List[List[int]]:
 
 
 def _uniform(cfg: Algorithmic.Config) -> Tuple[List[List[int]], List[List[int]]]:
-    """Return all tuples of integers up to a maximum, shuffled and split into train/test."""
+    """Return all tuples of integers up to a maximum, shuffled and split into train/val."""
     vocab = set(range(cfg.value_range))
     examples = list(map(list, itertools.product(vocab, repeat=cfg.value_count)))
     np.random.shuffle(examples)
@@ -167,11 +174,11 @@ def _asymm(cfg: Algorithmic.Config) -> Tuple[List, List]:
     """Return all pairs of integers (i, j) up to a maximum. Train group has all j >= i."""
     assert cfg.value_count == 2, f"Can't use asymm setting for value_count != 2"
     train = [[i, j] for i in range(cfg.value_range) for j in range(i, cfg.value_range)]
-    test = [[i, j] for i in range(cfg.value_range) for j in range(0, i)]
-    np.random.shuffle(test)
+    val = [[i, j] for i in range(cfg.value_range) for j in range(0, i)]
+    np.random.shuffle(val)
     # Determine how much of the j < i set we'll add to the train set
-    div = int(cfg.training_fraction * len(test))
-    train += test[:div]
-    test = test[div:]
+    div = int(cfg.training_fraction * len(val))
+    train += val[:div]
+    val = val[div:]
     np.random.shuffle(train)
-    return train, test
+    return train, val

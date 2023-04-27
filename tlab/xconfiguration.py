@@ -214,8 +214,8 @@ class XConfiguration:
                 {
                     "epoch": params["epoch"],
                     "lossTrain": params["train_loss"],
-                    "lossTest": params["test_loss"],
-                    "accuracyTest": params["test_accuracy"],
+                    "lossTest": params["val_loss"],
+                    "accuracyTest": params["val_accuracy"],
                     "embedding": to_numpy(params["model"]["embed.W_E"]).tolist(),
                     "pos_embed": to_numpy(
                         params["model"]["position_embed.W_pos"]

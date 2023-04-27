@@ -259,7 +259,7 @@ class Experiment:
         """Load only the final values for measurements from an experiment."""
         raw = Observations.load_obs_group(self.path, verbose, filter_strs)
         variables = list(self.ranges.keys())
-        metrics = ["test_loss", "test_accuracy", "train_loss"]
+        metrics = ["train_loss", "val_loss", "val_accuracy"]
         rows = []
         for xcon in self.configure():
             exp_header = {var: xcon.params[var] for var in variables}

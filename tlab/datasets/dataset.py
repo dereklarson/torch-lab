@@ -22,7 +22,9 @@ class Dataset(metaclass=NameRepr):
         pass
 
     def stats(self) -> None:
-        print(f"{len(self.train)} training examples, {len(self.test)} test examples")
+        print(
+            f"{len(self.train)} training examples, {len(self.val)} validation examples"
+        )
 
     def head(self, n: int = 10, subset: str = "train") -> None:
         for input, label in getattr(self, subset).head(n):
@@ -34,18 +36,18 @@ class Dataset(metaclass=NameRepr):
         pass
 
 
-class DataDiv:
-    def __init__(
-        self, inputs: List[Tuple[int, ...]], targets: List[int], to_cuda: bool = True
-    ) -> None:
+class DataBatch:
+    def __init__(self, inputs, targets) -> None:
         self.inputs = inputs
         self.targets = targets
-        if to_cuda:
-            self.inputs = torch.tensor(inputs).to("cuda")
-            self.targets = torch.tensor(targets).to("cuda")
 
     def __len__(self):
         return len(self.inputs)
+
+    def to_cuda(self):
+        self.inputs = torch.tensor(self.inputs).to("cuda")
+        self.targets = torch.tensor(self.targets).to("cuda")
+        return self
 
     def head(self, n: int = 10) -> List[Tuple]:
         output = []
