@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from tlab.data import Dataset
+from tlab.datasets import Dataset
 from tlab.models.lab_model import LabModel
 from tlab.utils.analysis import self_similarity, sign_similarity
 
@@ -123,6 +123,12 @@ class Optimizer:
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
+
+        if self.config.repulsion_strength > 0:
+            params = getattr(self, "repulsion_params", [])
+            if not params and self.epoch == 0:
+                print("Repulsion strength set with no parameters")
+            self.repulsion_update(model, params, self.config.repulsion_strength)
 
         self.iteration += 1
 

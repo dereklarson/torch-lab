@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 import pandas as pd
 from prettytable import PrettyTable
 
+from tlab.datasets import Dataset
 from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
 from tlab.utils.util import StopExecution
@@ -49,9 +50,13 @@ class Experiment:
         self.tag = tag
         self.defaults = defaults or {}
 
-        assert "model_class" in defaults, "'defaults' dict must specify 'model_class'"
+        assert "dataset_class" in defaults, "'defaults' must specify 'dataset_class'"
+        self.dataset_class: Type[Dataset] = defaults["dataset_class"]
+        assert "model_class" in defaults, "'defaults' must specify 'model_class'"
         self.model_class: Type[LabModel] = defaults["model_class"]
-        self.valid_params = XConfiguration.valid_params(self.model_class)
+        self.valid_params = XConfiguration.valid_params(
+            self.dataset_class, self.model_class
+        )
         for key in self.defaults:
             assert key in self.valid_params.keys(), f"{key} is an invalid parameter"
 
@@ -210,7 +215,13 @@ class Experiment:
             idx += 1
             params = self._get_params(variable_dict)
             variables = tuple(variable_dict.keys())
-            yield XConfiguration.from_dict(idx, self.model_class, params, variables)
+            yield XConfiguration.from_dict(
+                idx,
+                dataset_class=self.dataset_class,
+                model_class=self.model_class,
+                conf_dict=params,
+                variables=variables,
+            )
 
     def prepare_runs(self) -> XConfiguration:
         """Generate Xconfigurations and initialize the run as well."""

@@ -1,4 +1,4 @@
-from tlab.data import Dataset
+from tlab.datasets import Dataset
 from tlab.experiment import Experiment
 from tlab.models.transformer import Transformer
 from tlab.observation import Observables, Observations

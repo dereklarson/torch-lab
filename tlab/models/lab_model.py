@@ -12,12 +12,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from tlab.utils import NameRepr
 from tlab.utils.hookpoint import HookPoint
-
-
-class NameRepr(type):
-    def __repr__(cls):
-        return cls.__name__
 
 
 class LabModel(nn.Module, metaclass=NameRepr):
@@ -52,10 +48,25 @@ class LabModel(nn.Module, metaclass=NameRepr):
 
     @cached_property
     def _lookup(self) -> Dict[str, torch.Tensor]:
-        """Create a cached lookup table for parameters, using short names."""
+        """Create a cached lookup table for parameters, using short names.
+        E.g. model.mlp.layers.0.weight.data -> 'w_l0'
+             model.unembed.weight.data -> 'w_u'
+             model.block.0.attn.w_q -> ?  TODO
+        """
         lookup = {}
         for name, param in self.named_parameters():
-            key = name.split(".")[-1]
+            w_type = name.split(".")[-1]
+            base = name.split(".")[:-1]
+            try:
+                mod_name = f"{base[-2][0]}{int(base[-1])}"
+            except:
+                mod_name = base[-1][0]
+            prefix = w_type
+            if w_type == "weight":
+                prefix = "w"
+            elif w_type == "bias":
+                prefix = "b"
+            key = f"{prefix}_{mod_name}"
             # TODO Do some auto enumeration for name overlap
             assert key not in lookup, f"Param lookup already contains {key}"
             lookup[key] = param.data
@@ -105,7 +116,7 @@ class LabModel(nn.Module, metaclass=NameRepr):
             if include_backward:
                 hp.add_hook(save_hook_back, "bwd")
 
-    def activate(self, inputs) -> Dict[str, torch.Tensor]:
+    def watch(self, inputs) -> Dict[str, torch.Tensor]:
         cache = {}
         self.cache_all(cache)
         outputs = self(inputs)

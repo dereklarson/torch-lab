@@ -17,9 +17,8 @@ import parse
 import torch
 from prettytable import PrettyTable
 
-from tlab.data import DataConfig, Dataset
+from tlab.datasets import Dataset
 from tlab.models.lab_model import LabModel
-from tlab.observation import Observations
 from tlab.optimize import OptimConfig, Optimizer
 from tlab.utils.util import (
     get_attention_patterns,
@@ -35,7 +34,7 @@ class XConfiguration:
     def __init__(
         self,
         idx: int,
-        data_cfg: DataConfig,
+        data_cfg: Dataset.Config,
         model_cfg: LabModel.Config,
         optim_cfg: OptimConfig,
         variables: Tuple[str] = tuple(),
@@ -45,12 +44,12 @@ class XConfiguration:
         self.init_seeds(data_cfg, model_cfg)
 
         # TODO Allow a set of DataConfigs to specify composite datasets
-        self.data: DataConfig = data_cfg
+        self.data: Dataset.Config = data_cfg
         self.model: LabModel.Config = model_cfg
         self.optim: OptimConfig = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
 
-    def init_seeds(self, data_cfg: DataConfig, model_cfg: LabModel.Config) -> None:
+    def init_seeds(self, data_cfg: Dataset.Config, model_cfg: LabModel.Config) -> None:
         """Generate new random seeds for Numpy and PyTorch if not specified."""
         if data_cfg.data_seed == 0:
             rng = np.random.default_rng()
@@ -60,9 +59,9 @@ class XConfiguration:
             model_cfg.torch_seed = rng.integers(1, 0xFFFFFFFFFFFF)
 
     @staticmethod
-    def valid_params(model_class: Type[LabModel]):
+    def valid_params(dataset_class: Type[Dataset], model_class: Type[LabModel]):
         return {
-            **get_type_hints(DataConfig),
+            **get_type_hints(dataset_class.Config),
             **get_type_hints(model_class.Config),
             **get_type_hints(OptimConfig),
         }
@@ -71,6 +70,7 @@ class XConfiguration:
     def from_dict(
         cls,
         idx: int,
+        dataset_class: Type[Dataset],
         model_class: Type[LabModel],
         conf_dict: Dict[str, Any],
         variables: Tuple[str] = tuple(),
@@ -78,7 +78,7 @@ class XConfiguration:
         """Return an XConfiguration from an index and parameter dictionary"""
         conf_args = []
         for config_class in (
-            DataConfig,
+            dataset_class.Config,
             model_class.Config,
             OptimConfig,
         ):
@@ -153,13 +153,13 @@ class XConfiguration:
         model: LabModel,
         optim: Optimizer,
     ):
-        filepath = root / f"{self.filebase}_mdl_{optim.epoch:0>6d}.pth"
+        filepath = root / f"{self.filebase}_mdl_{optim.iteration:0>6d}.pth"
         save_dict = {
             "params": self.params,
             "model": model.state_dict(),
-            "train_loss": optim.train_losses[-1],
-            "test_loss": optim.test_losses[-1],
+            # "train_loss": optim.train_losses[-1],
             "epoch": optim.epoch,
+            "iteration": optim.iteration,
         }
         torch.save(save_dict, filepath)
 
@@ -171,8 +171,8 @@ class XConfiguration:
             "optimizer": optim.optimizer.state_dict(),
             "scheduler": optim.scheduler.state_dict(),
             "train_losses": optim.train_losses,
-            "test_losses": optim.test_losses,
             "epoch": optim.epoch,
+            "iteration": optim.iteration,
         }
         torch.save(save_dict, filepath)
 
