@@ -94,6 +94,14 @@ class Experiment:
         with open(self.path / self.exp_file, "wb") as fh:
             pickle.dump(self, fh)
 
+    def rename(self, new_tag: str) -> "Experiment":
+        """Rename and move files associated with the Experiment."""
+        new_path = self.root_path / new_tag
+        os.rename(self.path, new_path)
+        self.tag = new_tag
+        self.save()
+        return self
+
     @classmethod
     def _glob_exp(cls, path: Optional[Path] = None, verbose: bool = False):
         exc_ct = 0
@@ -254,16 +262,11 @@ class Experiment:
         self, verbose: bool = False, filter_strs: Tuple[str, ...] = tuple()
     ) -> pd.DataFrame:
         """Load only the final values for measurements from an experiment."""
-        raw = Observations.load_obs_group(self.path, verbose, filter_strs)
-        variables = list(self.ranges.keys())
-        metrics = ["train_loss", "val_loss", "val_accuracy"]
-        rows = []
-        for xcon in self.configure():
-            exp_header = {var: xcon.params[var] for var in variables}
-            row = {var: raw[xcon.idx][var][-1] for var in metrics}
-            row.update(exp_header)
-            rows.append(row)
-        return pd.DataFrame(rows)
+        series_list = self.load_observations(verbose=verbose, filter_strs=filter_strs)
+        df = pd.DataFrame([_df.iloc[-1] for _df in series_list]).astype(
+            {"exp_idx": "int32"}
+        )
+        return df.set_index("exp_idx")
 
     def dump_json_data(self, dest: Path, name: str = "Default", **kwargs):
         # Dump a list of configurations
