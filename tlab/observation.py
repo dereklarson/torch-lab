@@ -15,7 +15,7 @@ import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 import parse
@@ -26,46 +26,41 @@ from tlab.models.lab_model import LabModel
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
 
-STD_OBSERVABLES = [
-    "train_loss",
-    "val_loss",
-    "val_accuracy",
-]
-
 
 class Observations:
-    def __init__(self, init=False) -> None:
+    def __init__(self, observables: Dict[str, bool]) -> None:
         # Define functions for every observable
-        self._obs_funcs = {}
+        self._obs_funcs: Dict[str, Callable] = {}
+        self._batch_trigger: Dict[str, bool] = {}
 
-        # 'data' reset during run initialization
+        for observable, always in observables.items():
+            self.add_observable(observable, always, {})
+
+        # 'path' and 'data' reset during run initialization
+        self.path: Path = Path("./")
         self.data: Dict[str, Any] = defaultdict(dict)
-        self.tag: str = ""
 
-        if init:
-            for observable in STD_OBSERVABLES:
-                self.add_observable(observable, {})
-
-    def add_observable(self, obs_name: str, obs_kwargs: Dict[str, Any]) -> None:
+    def add_observable(
+        self, obs_name: str, always: bool, obs_kwargs: Dict[str, Any]
+    ) -> None:
         func = getattr(Observables, obs_name)
         if not obs_kwargs:
             self._obs_funcs[obs_name] = func
+            self._batch_trigger[obs_name] = always
         elif len(obs_kwargs) == 1:
             arg = list(obs_kwargs)[0]
-            if arg in ("device",):
-                self._obs_funcs[obs_name] = functools.partial(
-                    func, **{arg: obs_kwargs[arg]}
-                )
-            elif arg == "names":
+            if arg == "names":
                 for val in obs_kwargs[arg]:
                     fkey = f"{obs_name}_{val}"
                     self._obs_funcs[fkey] = functools.partial(func, **{"name": val})
+                    self._batch_trigger[fkey] = always
             elif arg == "matrix_elements":
                 rows, cols = obs_kwargs[arg]
                 for r in range(rows):
                     for c in range(cols):
                         fkey = f"{obs_name}_{r}.{c}"
                         self._obs_funcs[fkey] = functools.partial(func, row=r, col=c)
+                        self._batch_trigger[fkey] = always
             else:
                 logging.warning(
                     f"Unsupported kwargs for {obs_name} observation: {obs_kwargs}"
@@ -73,19 +68,17 @@ class Observations:
         else:
             logging.warning(f"Too many kwargs for {obs_name} observation: {obs_kwargs}")
 
-    def init_run(self, tag: str) -> None:
-        self.tag = tag
-        self.data: Dict[str, Dict[int, float]] = defaultdict(dict)
+    def _save(self, data: Any) -> None:
+        with open(self.path, "ab") as fh:
+            pickle.dump(data, fh)
 
-    def observe(
-        self,
-        model: LabModel,
-        optim: Optimizer,
-        data: Dataset,
-        **kwargs,
-    ) -> None:
-        for key, func in self._obs_funcs.items():
-            self.observe_once(key, func, model, optim, data, **kwargs)
+    def save(self) -> None:
+        self._save(self.data)
+
+    def init_run(self, root: Path, filebase: str, header: Dict[str, Any]) -> None:
+        self.path = root / f"{filebase}_obs.pkl"
+        self.data: Dict[str, Dict[int, float]] = defaultdict(dict)
+        self._save(header)
 
     def observe_once(
         self,
@@ -98,12 +91,27 @@ class Observations:
     ) -> None:
         self.data[key][optim.iteration] = func(model, optim, data, **kwargs)
 
-    def save(self, root: Path, filebase: str, header: Dict[str, Any] = None) -> None:
-        obs_path = root / f"{filebase}_obs.pkl"
-        with open(obs_path, "ab") as fh:
-            if header is not None:
-                pickle.dump(header, fh)
-            pickle.dump(self.data, fh)
+    def observe_batch(
+        self,
+        model: LabModel,
+        optim: Optimizer,
+        data: Dataset,
+        **kwargs,
+    ) -> None:
+        for key, func in self._obs_funcs.items():
+            if not self._batch_trigger[key]:
+                continue
+            self.observe_once(key, func, model, optim, data, **kwargs)
+
+    def observe(
+        self,
+        model: LabModel,
+        optim: Optimizer,
+        data: Dataset,
+        **kwargs,
+    ) -> None:
+        for key, func in self._obs_funcs.items():
+            self.observe_once(key, func, model, optim, data, **kwargs)
 
     @classmethod
     def load(cls, root: Path, filebase: str, verbose: bool = False):
@@ -114,6 +122,7 @@ class Observations:
             if verbose:
                 print(f"Loading observations {obs_path}...")
             with open(obs_path, "rb") as fh:
+                # We assume the first dump will be the header
                 header = pickle.load(fh)
                 while True:
                     try:

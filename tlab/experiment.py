@@ -63,9 +63,6 @@ class Experiment:
         self.ranges: Dict[str, Tuple[Any, ...]] = {}
         self.relations: Dict[str, Relation] = {}
 
-        # Stores data gathered during a run, standard observables are added via init
-        self.observations = Observations(init=True)
-
     def __getitem__(self, key: int):
         for cfg in self.configure():
             if cfg.idx == key:
@@ -226,11 +223,11 @@ class Experiment:
                 variables=variables,
             )
 
-    def prepare_runs(self) -> XConfiguration:
+    def prepare_runs(self, obs: Observations) -> XConfiguration:
         """Generate Xconfigurations and initialize the run as well."""
         for xcon in self.configure():
-            self.observations.init_run(self.tag)
             xcon.dump(self.path)
+            obs.init_run(self.path, xcon.filebase, header=xcon.params)
             yield xcon
 
     def load_state(self, idx: int, epoch: Optional[int] = None):
