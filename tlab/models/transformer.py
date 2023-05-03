@@ -1,9 +1,12 @@
-"""Transformer implementation (Decoder only) with Hookpoints.
+"""Transformer implementation (Decoder only) designed for experimentation.
 
-This implementation derives from Neel Nanda's work on Grokking.
+The goal is to have an easily configurable and understandable model architecture,
+that supports observing its internals and connects to tools for standardized 
+operations.
 
-Note: I haven't been using the Hookpoints, just left them in place as they should
-be useful down the road.
+This implementation largely follows from the following two sources:
+ - Andrey Karpathy's NanoGPT: https://github.com/karpathy/nanoGPT
+ - Neel Nanda's TransformerLens: https://github.com/neelnanda-io/TransformerLens
 
 Notes on Einstein notation conventions
  - Repeated, uncontracted indices use caps. e.g. "ij,Ij -> iI" for matrix mult.
@@ -16,6 +19,7 @@ Glossary of indices:
  - m: MLP hidden dimension
 """
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -51,14 +55,14 @@ class Transformer(LabModel):
         if cfg.pos_embed == "learned":
             self.position_embed = PositionEmbed(n_ctx=cfg.n_ctx, d_embed=cfg.d_embed)
         elif cfg.pos_embed == "cosine":
-            pass
+            raise NotImplementedError("Cosine positional embedding not implemented")
         else:
             pass
 
         # TODO Consider allowing variants to the standard TransformerBlock
         block = TransformerBlock
-
         self.blocks = nn.ModuleList([block(cfg) for i in range(cfg.n_blocks)])
+
         if cfg.unembed_type != "none":
             self.unembed_ln = LayerNorm(n_dim=cfg.d_embed)
             self.unembed = Unembed(n_in=cfg.d_embed, n_outputs=cfg.n_vocab)
@@ -86,35 +90,37 @@ class Transformer(LabModel):
         return x
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(
+        self,
+        prompt: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ):
         """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
+        Beginning with a prompt, sample from the generated next token logits to produce a token
+        to append to the prompt. Repeat this for 'max_new_tokens' iterations.
         """
+        self.eval()
         for _ in range(max_new_tokens):
-            # if the sequence context is growing too long we must crop it at block_size
-            idx_cond = (
-                idx
-                if idx.size(1) <= self.config.n_ctx
-                else idx[:, -self.config.n_ctx :]
+            # Crop the sequence to the maximum context allowed.
+            ctx = (
+                prompt
+                if prompt.size(1) <= self.config.n_ctx
+                else prompt[:, -self.config.n_ctx :]
             )
-            # forward the model to get the logits for the index in the sequence
-            logits = self(idx_cond)
-            # pluck the logits at the final step and scale by desired temperature
-            logits = logits[:, -1, :] / temperature
-            # optionally crop the logits to only the top k options
+            # Select the logits from the last context position.
+            logits = self(ctx)[:, -1, :]
+            # We can crop to the top_k options to limit poor-quality results if desired.
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float("Inf")
-            # apply softmax to convert logits to (normalized) probabilities
-            probs = F.softmax(logits, dim=-1)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)
-            # append sampled index to the running sequence and continue
-            idx = torch.cat((idx, idx_next), dim=1)
+            # Sample from the distribution given by the probabilities at given temp.
+            probs = F.softmax(logits / temperature, dim=-1)
+            ctx_next = torch.multinomial(probs, num_samples=1)
+            prompt = torch.cat((ctx, ctx_next), dim=1)
 
-        return idx
+        return prompt
 
 
 class Attention(nn.Module):
@@ -134,20 +140,14 @@ class Attention(nn.Module):
         self.W_O = nn.Parameter(
             torch.randn(cfg.n_heads, cfg.d_embed, cfg.d_head) / np.sqrt(cfg.d_embed)
         )
-        # This is the causal mask that forces each token to only attend to prior tokens
-        # in the context. It is an upper triangular matrix
-        self.register_buffer(
-            "mask", torch.triu(1e10 * torch.ones((cfg.n_ctx, cfg.n_ctx)), diagonal=1)
-        )
-        self.d_head = cfg.d_head
+        self.dropout = nn.Dropout(p=cfg.p_dropout)
+
         self.hook_k = HookPoint()
         self.hook_q = HookPoint()
         self.hook_v = HookPoint()
         self.hook_z = HookPoint()
         self.hook_attn = HookPoint()
         self.hook_attn_pre = HookPoint()
-
-        self.dropout = nn.Dropout(p=cfg.p_dropout)
 
     def forward(self, x):
         q = self.hook_q(torch.einsum("ahe,bce->bach", self.W_Q, x).contiguous())
@@ -164,13 +164,16 @@ class Attention(nn.Module):
             )
             out = torch.einsum("aeh,bach->bce", self.W_O, z)
         else:
+            print("TODO Fix this implementation")
             attn_scores_pre = torch.einsum("bach,baCh->bacC", k, q)
             attn_scores_masked = (
                 torch.tril(attn_scores_pre) - self.mask[: x.shape[-2], : x.shape[-2]]
             )
             attn_matrix = self.hook_attn(
                 F.softmax(
-                    self.hook_attn_pre(attn_scores_masked / np.sqrt(self.d_head)),
+                    self.hook_attn_pre(
+                        attn_scores_masked / np.sqrt(self.config.d_head)
+                    ),
                     dim=-1,
                 )
             )
