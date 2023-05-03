@@ -19,42 +19,53 @@ from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis
 from tlab.utils.util import to_numpy
 
-DEF_PLOTS = ["train_loss", "val_loss", "val_accuracy"]
 
+class LivePlot:
+    def __init__(
+        self,
+        observations: Optional[Observations],
+        plots: Tuple[str, ...] = tuple(),
+        **kwargs,
+    ):
+        self.hidden = False
+        self.fig = go.FigureWidget()
+        _layout(
+            self.fig, title="Live Training", size=(None, 600), log_x=False, log_y=True
+        )
+        self.plots = plots
+        if observations:
+            self.plots = self.plots + tuple(observations._obs_funcs.keys())
 
-def live_plot(**kwargs):
-    fig = go.FigureWidget()
-    _layout(fig, title="Live Training", size=(None, 600), log_x=False, log_y=True)
-    return fig
+    def show(self):
+        self.hidden = False
+        self.fig.show()
 
+    def hide(self):
+        self.hidden = True
 
-def add_plots(fig: go.Figure, tag: str, plots=DEF_PLOTS):
-    if not fig:
-        return
-    args = {"group": tag, "thinning": 0}
-    for param in plots:
-        fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
+    def add_series(self, tag: str):
+        args = {"group": tag, "thinning": 0}
+        for param in self.plots:
+            self.fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
 
-
-def update_plots(
-    fig,
-    obs: Observations,
-    group_idx: int,
-    plots=DEF_PLOTS,
-    thinning: int = 1,
-):
-    if not fig:
-        return
-    N = len(plots)
-    idx = N * group_idx
-    df = pd.DataFrame(obs.data)
-    for param in plots:
-        series = df[param].dropna().sort_index()
-        x = series.index.to_numpy()
-        y = series.to_numpy()
-        fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
-        fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
-        idx += 1
+    def update(
+        self,
+        obs: Observations,
+        group_idx: int,
+        thinning: int = 1,
+    ):
+        if self.hidden:
+            return
+        N = len(self.plots)
+        idx = N * group_idx
+        df = pd.DataFrame(obs.data)
+        for param in self.plots:
+            series = df[param].dropna().sort_index()
+            x = series.index.to_numpy()
+            y = series.to_numpy()
+            self.fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
+            self.fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
+            idx += 1
 
 
 def _scatter(
