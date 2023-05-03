@@ -129,7 +129,7 @@ class Algorithmic(Dataset):
         operation = _get_operation(main_cfg)
         inputs = list(map(list, itertools.product(vocab, repeat=main_cfg.value_count)))
         targets = np.apply_along_axis(operation, 1, inputs)
-        return torch.tensor(inputs).to("cuda"), torch.tensor(targets).to("cuda")
+        return DataBatch(inputs, targets).to_cuda()
 
 
 def _get_operation(cfg: Algorithmic.Config):

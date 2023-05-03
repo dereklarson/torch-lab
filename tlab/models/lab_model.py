@@ -88,10 +88,8 @@ class LabModel(nn.Module, metaclass=NameRepr):
 
     @property
     def wnorm(self) -> float:
-        return float(
-            torch.linalg.norm(
-                torch.concat([par.flatten() for par in self.parameters()])
-            ).to("cpu")
+        return torch.linalg.norm(
+            torch.concat([par.flatten() for par in self.parameters()])
         )
 
     @property
