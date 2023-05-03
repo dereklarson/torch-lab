@@ -36,6 +36,9 @@ class LivePlot:
         if observations:
             self.plots = self.plots + tuple(observations._obs_funcs.keys())
 
+    def clear(self):
+        self.fig.data = []
+
     def show(self):
         self.hidden = False
         self.fig.show()
