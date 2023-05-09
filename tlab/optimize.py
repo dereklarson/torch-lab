@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from tlab.datasets.dataset import DataBatch, Dataset
 from tlab.models.lab_model import LabModel
 from tlab.utils.analysis import self_similarity, sign_similarity
-from tlab.utils.util import gpu_mem
 
 
 @dataclass
@@ -53,7 +52,6 @@ class Optimizer:
         self.epoch = 0
         self.iteration = 0
         self.train_losses = []
-        self.curr_val_loss = 4
 
     def measure_loss(self, model: LabModel, batch: DataBatch) -> torch.Tensor:
         train_loss = self.loss_func(model(batch.inputs), batch.targets)
@@ -80,29 +78,10 @@ class Optimizer:
 
         self.iteration += 1
 
-    def end_epoch(self, model: LabModel, dataset: Dataset) -> None:
+    def end_epoch(self, model: LabModel) -> None:
         """Process one training step: handle loss, learning_rate, etc"""
         model.eval()
-        batch_losses = []
-        for batch in dataset.val_loader:
-            batch_losses.append(
-                self.loss_func(model(batch.inputs), batch.targets).item()
-            )
-
         self.epoch += 1
-        self.curr_val_loss = np.mean(batch_losses)
-
-    def display(self, entries: Tuple[str, ...] = tuple()) -> Dict[str, str]:
-        """Postfix for TQDM progress bar, to track key optimization variables."""
-        display_entries = dict(
-            train=f"{np.log(self.train_losses[-1]):.4f}",
-            eval=f"{np.log(self.curr_val_loss):.4f}",
-        )
-        if "lr" in entries:
-            display_entries["lr"] = f"{self.scheduler.get_last_lr()[0]}"
-        if "gpu" in entries:
-            display_entries["gpu"] = f"{gpu_mem():.3f}"
-        return display_entries
 
     def repulsion_update(
         self, model: LabModel, params: List[str], strength: float = 0.001

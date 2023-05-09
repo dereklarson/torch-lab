@@ -17,7 +17,26 @@ from tlab.experiment import Experiment
 from tlab.observation import Observations
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis
-from tlab.utils.util import to_numpy
+from tlab.utils.util import gpu_mem, to_numpy
+
+
+def display(
+    optim: Optimizer, obs: Observations, entries: Tuple[str, ...] = tuple()
+) -> Dict[str, str]:
+    """Postfix for TQDM progress bar, to track key optimization variables."""
+    display_entries = dict(
+        train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}",
+        val=f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}",
+    )
+    if "lr" in entries:
+        display_entries["lr"] = f"{optim.scheduler.get_last_lr()[0]}"
+    if "acc" in entries:
+        display_entries["lr"] = (
+            f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}",
+        )
+    if "gpu" in entries:
+        display_entries["gpu"] = f"{gpu_mem():.3f}"
+    return display_entries
 
 
 class LivePlot:
