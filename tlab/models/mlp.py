@@ -32,7 +32,7 @@ class MLP(LabModel):
         layers = []
         for n_out in cfg.mlp_layers:
             if cfg.layer_type == "Mult":
-                layers.append(MultLayer(n_in, n_out, cfg.use_bias))
+                layers.append(MultLayer(n_in, n_out, use_bias=cfg.use_bias))
             elif cfg.layer_type == "SimpleMult":
                 layers.append(SimpleMultLayer(n_in, n_out))
             elif cfg.layer_type == "Linear":
@@ -40,6 +40,7 @@ class MLP(LabModel):
             else:
                 raise Exception(f"No layer for type '{cfg.layer_type}'")
             n_in = n_out
+
         self.layers = nn.ModuleList(layers)
         self.output = Unembed(n_in, cfg.n_outputs)
 
@@ -54,6 +55,12 @@ class MLP(LabModel):
                 x = F.relu(layer(x))
             elif self.config.activation_type == "LeakyReLU":
                 x = nn.LeakyReLU(0.01)(layer(x))
+            elif self.config.activation_type == "GeLU":
+                x = F.gelu(layer(x))
+            else:
+                raise NotImplementedError(
+                    f"No activation called {self.config.activation_type}"
+                )
             x = getattr(self, f"hook_layer.{idx}")(x)
         if self.config.use_dropout:
             x = F.dropout(x, training=self.training)
