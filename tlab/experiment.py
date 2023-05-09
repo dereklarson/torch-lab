@@ -18,7 +18,7 @@ import shutil
 from dataclasses import dataclass
 from glob import glob
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import pandas as pd
 from prettytable import PrettyTable
@@ -33,8 +33,8 @@ from tlab.xconfiguration import XConfiguration
 @dataclass
 class Relation:
     source: str
-    op: str
-    value: float
+    op: Callable
+    arg: float
 
 
 class Experiment:
@@ -170,7 +170,9 @@ class Experiment:
             table.add_row([param, self.defaults[param]])
         for param in sorted(self.relations.keys()):
             rel = self.relations[param]
-            table.add_row([f"-> {param}", f"{rel.op}({rel.source}, {rel.value})"])
+            table.add_row(
+                [f"-> {param}", f"{rel.op.__name__}({rel.source}, {rel.arg})"]
+            )
         for param in sorted(self.ranges.keys()):
             values = self.ranges[param][:10]
             if len(self.ranges[param]) > 10:
@@ -211,9 +213,11 @@ class Experiment:
         full_params = self.defaults.copy()
         full_params.update(exp_dict)
         for param, rel in self.relations.items():
-            full_params[param] = getattr(operator, rel.op)(
-                full_params[rel.source], rel.value
-            )
+            if not callable(rel.op):
+                raise NotImplementedError(f"Can't handle relation with op {rel.op}")
+            src = full_params[rel.source]
+            full_params[param] = rel.op(src, rel.arg)
+
         return full_params
 
     def configure(self) -> XConfiguration:
