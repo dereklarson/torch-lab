@@ -65,9 +65,9 @@ parity_tiny = {
     "data_seed": 1,
     "operation": "add",
     "value_count": 2,
-    "value_range": 8,
+    "value_range": 10,
     "result_mod": 2,
-    "training_fraction": 0.6,
+    "training_fraction": 0.5,
     "use_operators": False,
     # Model
     "model_class": EmbedMLP,
@@ -76,7 +76,7 @@ parity_tiny = {
     "mlp_layers": [4],
     "n_ctx": 2,
     "n_outputs": 2,
-    "n_vocab": 8,
+    "n_vocab": 10,
     "use_bias": False,
     "layer_type": "Linear",
     # Optimization

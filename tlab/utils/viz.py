@@ -25,15 +25,18 @@ def display(
 ) -> Dict[str, str]:
     """Postfix for TQDM progress bar, to track key optimization variables."""
     display_entries = dict(
-        train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}",
-        val=f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}",
+        train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}"
     )
+    if "val_loss" in obs.data:
+        display_entries[
+            "val"
+        ] = f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}"
     if "lr" in entries:
         display_entries["lr"] = f"{optim.scheduler.get_last_lr()[0]}"
     if "acc" in entries:
-        display_entries["lr"] = (
-            f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}",
-        )
+        display_entries[
+            "acc"
+        ] = f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}"
     if "gpu" in entries:
         display_entries["gpu"] = f"{gpu_mem():.3f}"
     return display_entries
