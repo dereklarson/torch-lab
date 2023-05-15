@@ -1,5 +1,6 @@
 """Optimizer contains the configuration and functionality for operating the training.
 """
+import math
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
@@ -17,10 +18,11 @@ class OptimConfig:
     n_epochs: int = 10000
     learning_rate: float = 1e-3
     warmup_iters: int = 10
-    final_lr: float = 0.1
+    decay_iters: int = 5000
+    final_coeff: float = 0.1
     weight_decay: float = 1.0
     adam_betas: tuple = (0.90, 0.98)
-    torch_dtype: str = "float16"
+    torch_dtype: str = "float32"
     grad_clip: float = 0.0
     shuffle_threshold: float = 0.0  # Perform an update to reduce sign similarity
     repulsion_strength: float = 0.0  # Encourages orthogonality in weight matrices
@@ -42,9 +44,19 @@ class Optimizer:
             weight_decay=cfg.weight_decay,
             betas=cfg.adam_betas,
         )
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lambda step: min(step / cfg.warmup_iters, 1)
-        )
+
+        def annealing(step):
+            if step < cfg.warmup_iters:
+                return step / cfg.warmup_iters
+            if step > cfg.decay_iters:
+                return cfg.final_coeff
+            decay_ratio = (step - cfg.warmup_iters) / (
+                cfg.decay_iters - cfg.warmup_iters
+            )
+            coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
+            return cfg.final_coeff + coeff * (1 - cfg.final_coeff)
+
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, annealing)
 
         # initialize a GradScaler. If enabled=False scaler is a no-op
         self.scaler = torch.cuda.amp.GradScaler(enabled=(cfg.torch_dtype == "float16"))
