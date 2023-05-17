@@ -6,11 +6,14 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import einops
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import torch
+import torchvision.transforms.functional as F
+from matplotlib.animation import FuncAnimation
 from plotly.subplots import make_subplots
 
 from tlab.experiment import Experiment
@@ -18,6 +21,8 @@ from tlab.observation import Observations
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis
 from tlab.utils.util import gpu_mem, to_numpy
+
+plt.rcParams["savefig.bbox"] = "tight"
 
 
 def display(
@@ -568,3 +573,59 @@ def group_tuple_plot(
                     secondary_y=True,
                 )
     return fig
+
+
+def show_images(imgs: torch.Tensor):
+    if not isinstance(imgs, list):
+        imgs = [imgs]
+    fig, axs = plt.subplots(ncols=len(imgs), squeeze=False)
+    for i, img in enumerate(imgs):
+        img = img.detach()
+        img = F.to_pil_image(img)
+        axs[0, i].imshow(np.asarray(img))
+        axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+
+
+def ddp_viz(
+    x_gen_store,
+    n_sample: int,
+    n_classes: int = 10,
+):
+    """Create a gif showing the noise evolution of images."""
+    fig, axs = plt.subplots(
+        nrows=int(n_sample / n_classes),
+        ncols=n_classes,
+        sharex=True,
+        sharey=True,
+        figsize=(8, 3),
+    )
+
+    def animate_diff(i, x_gen_store):
+        # print(f"gif animating frame {i} of {x_gen_store.shape[0]}", end="\r")
+        plots = []
+        for row in range(int(n_sample / n_classes)):
+            for col in range(n_classes):
+                axs[row, col].clear()
+                axs[row, col].set_xticks([])
+                axs[row, col].set_yticks([])
+                # plots.append(axs[row, col].imshow(x_gen_store[i,(row*n_classes)+col,0],cmap='gray'))
+                plots.append(
+                    axs[row, col].imshow(
+                        -x_gen_store[i, (row * n_classes) + col, 0],
+                        cmap="gray",
+                        vmin=(-x_gen_store[i]).min(),
+                        vmax=(-x_gen_store[i]).max(),
+                    )
+                )
+        return plots
+
+    animation = FuncAnimation(
+        fig,
+        animate_diff,
+        fargs=[x_gen_store],
+        interval=200,
+        blit=False,
+        repeat=True,
+        frames=x_gen_store.shape[0],
+    )
+    return animation
