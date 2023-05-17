@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from tlab.datasets.dataset import DataBatch, Dataset
+from tlab.datasets.lab_dataset import DataBatch, LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.utils.analysis import self_similarity, sign_similarity
 

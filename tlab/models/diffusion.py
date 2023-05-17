@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from tlab.datasets.dataset import DataBatch
+from tlab.datasets.lab_dataset import DataBatch
 from tlab.models.lab_model import LabModel
 
 

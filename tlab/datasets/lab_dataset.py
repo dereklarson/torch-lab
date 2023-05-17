@@ -9,10 +9,10 @@ from tlab.utils import NameRepr
 from tlab.utils.util import to_numpy
 
 
-class Dataset(metaclass=NameRepr):
+class LabDataset(metaclass=NameRepr):
     @dataclass
     class Config:
-        dataset_class: Type["Dataset"]
+        dataset_class: Type["LabDataset"]
         data_seed: int
 
     def __init__(
@@ -32,7 +32,7 @@ class Dataset(metaclass=NameRepr):
             print(f"{in_str} -> {self.vocabulary[label]}")
 
     @classmethod
-    def from_config(cls, cfg: Config, to_cuda: bool = True) -> "Dataset":
+    def from_config(cls, cfg: Config, to_cuda: bool = True) -> "LabDataset":
         pass
 
 

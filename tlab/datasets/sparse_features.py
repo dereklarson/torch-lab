@@ -7,13 +7,13 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from tlab.datasets.dataset import DataBatch, Dataset
+from tlab.datasets.lab_dataset import DataBatch, LabDataset
 from tlab.utils.util import to_numpy
 
 
-class SparseFeatures(Dataset):
+class SparseFeatures(LabDataset):
     @dataclass
-    class Config(Dataset.Config):
+    class Config(LabDataset.Config):
         data_size: int = 1000
         n_features: int = 10000
         p_active: float = 0.001

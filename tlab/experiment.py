@@ -23,7 +23,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 import pandas as pd
 from prettytable import PrettyTable
 
-from tlab.datasets import Dataset
+from tlab.datasets import LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
 from tlab.utils.util import StopExecution
@@ -51,7 +51,7 @@ class Experiment:
         self.defaults = defaults or {}
 
         assert "dataset_class" in defaults, "'defaults' must specify 'dataset_class'"
-        self.dataset_class: Type[Dataset] = defaults["dataset_class"]
+        self.dataset_class: Type[LabDataset] = defaults["dataset_class"]
         assert "model_class" in defaults, "'defaults' must specify 'model_class'"
         self.model_class: Type[LabModel] = defaults["model_class"]
         self.valid_params = XConfiguration.valid_params(

@@ -7,13 +7,13 @@ import torch
 import torchvision
 from torch.utils.data.dataloader import default_collate
 
-from tlab.datasets.dataset import DataBatch, Dataset
+from tlab.datasets.lab_dataset import DataBatch, LabDataset
 from tlab.utils.util import to_numpy
 
 
-class MNIST(Dataset):
+class MNIST(LabDataset):
     @dataclass
-    class Config(Dataset.Config):
+    class Config(LabDataset.Config):
         batch_size: int = 1000
 
     def __init__(self, cfg: Config):

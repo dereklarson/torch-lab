@@ -6,13 +6,13 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from tlab.datasets.dataset import DataBatch, Dataset
+from tlab.datasets.lab_dataset import DataBatch, LabDataset
 from tlab.utils.util import to_numpy
 
 
-class Shakespeare(Dataset):
+class Shakespeare(LabDataset):
     @dataclass
-    class Config(Dataset.Config):
+    class Config(LabDataset.Config):
         batch_size: int = 32
         block_size: int = 256
         eval_iters: int = 200

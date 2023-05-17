@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from tlab.datasets.dataset import DataBatch, Dataset
+from tlab.datasets.lab_dataset import DataBatch, LabDataset
 from tlab.utils.util import to_numpy
 
 OPERATION_MAP = {
@@ -17,9 +17,9 @@ OPERATION_MAP = {
 }
 
 
-class Algorithmic(Dataset):
+class Algorithmic(LabDataset):
     @dataclass
-    class Config(Dataset.Config):
+    class Config(LabDataset.Config):
         value_range: int = 10  # Range of integers involved in the arithmetic
         result_mod: int = 10  # Apply modulo to the result
         operation: str = "add"  # Numerical operation to use for label calculation
@@ -49,7 +49,7 @@ class Algorithmic(Dataset):
             print(f"{in_str} -> {self.vocabulary[label]}")
 
     @classmethod
-    def from_config(cls, main_cfg: Config, to_cuda: bool = True) -> "Dataset":
+    def from_config(cls, main_cfg: Config, to_cuda: bool = True) -> "LabDataset":
         cfgs = cls._expand_params(main_cfg)
         vocabulary = cls.create_vocabulary(main_cfg)
         use_operators = any(cfg.use_operators for cfg in cfgs)

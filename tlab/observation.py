@@ -21,7 +21,7 @@ import numpy as np
 import parse
 import torch
 
-from tlab.datasets.algorithmic import DataBatch, Dataset
+from tlab.datasets.algorithmic import DataBatch, LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.optimize import Optimizer
 from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
@@ -86,7 +86,7 @@ class Observations:
         func,
         model: LabModel,
         optim: Optimizer,
-        data: Dataset,
+        data: LabDataset,
         **kwargs,
     ) -> None:
         self.data[key][optim.iteration] = func(model, optim, data, **kwargs)
@@ -95,7 +95,7 @@ class Observations:
         self,
         model: LabModel,
         optim: Optimizer,
-        data: Dataset,
+        data: LabDataset,
         **kwargs,
     ) -> None:
         for key, func in self._obs_funcs.items():
@@ -107,7 +107,7 @@ class Observations:
         self,
         model: LabModel,
         optim: Optimizer,
-        data: Dataset,
+        data: LabDataset,
         **kwargs,
     ) -> None:
         for key, func in self._obs_funcs.items():
@@ -182,7 +182,7 @@ class Observables:
 
     @staticmethod
     def val_loss(
-        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
+        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
     ) -> float:
         losses = []
         for batch in dataset.val_loader:
@@ -191,13 +191,13 @@ class Observables:
 
     @staticmethod
     def train_accuracy(
-        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
+        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
     ) -> float:
         return _accuracy(model, dataset.get_batch("train"))
 
     @staticmethod
     def val_accuracy(
-        model: LabModel, optim: Optimizer, dataset: Dataset, **kwargs
+        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
     ) -> float:
         accuracies = []
         for batch in dataset.val_loader:
