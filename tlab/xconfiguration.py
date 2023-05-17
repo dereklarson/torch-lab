@@ -19,7 +19,7 @@ from prettytable import PrettyTable
 
 from tlab.datasets import LabDataset
 from tlab.models.lab_model import LabModel
-from tlab.optimize import OptimConfig, Optimizer
+from tlab.optimizers.lab_optimizer import LabOptimizer
 from tlab.utils.util import (
     get_attention_patterns,
     get_mlp,
@@ -36,7 +36,7 @@ class XConfiguration:
         idx: int,
         data_cfg: LabDataset.Config,
         model_cfg: LabModel.Config,
-        optim_cfg: OptimConfig,
+        optim_cfg: LabOptimizer.Config,
         variables: Tuple[str] = tuple(),
     ) -> None:
         self.idx: int = idx
@@ -46,7 +46,7 @@ class XConfiguration:
         # TODO Allow a set of DataConfigs to specify composite datasets
         self.data: LabDataset.Config = data_cfg
         self.model: LabModel.Config = model_cfg
-        self.optim: OptimConfig = optim_cfg
+        self.optim: LabOptimizer.Config = optim_cfg
         self.variables: Tuple[str] = tuple(sorted(variables))
 
     def init_seeds(
@@ -61,11 +61,15 @@ class XConfiguration:
             model_cfg.torch_seed = rng.integers(1, 0xFFFFFFFFFFFF)
 
     @staticmethod
-    def valid_params(dataset_class: Type[LabDataset], model_class: Type[LabModel]):
+    def valid_params(
+        dataset_class: Type[LabDataset],
+        model_class: Type[LabModel],
+        optim_class: Type[LabOptimizer],
+    ):
         return {
             **get_type_hints(dataset_class.Config),
             **get_type_hints(model_class.Config),
-            **get_type_hints(OptimConfig),
+            **get_type_hints(optim_class.Config),
         }
 
     @classmethod
@@ -74,6 +78,7 @@ class XConfiguration:
         idx: int,
         dataset_class: Type[LabDataset],
         model_class: Type[LabModel],
+        optim_class: Type[LabOptimizer],
         conf_dict: Dict[str, Any],
         variables: Tuple[str] = tuple(),
     ) -> "XConfiguration":
@@ -82,7 +87,7 @@ class XConfiguration:
         for config_class in (
             dataset_class.Config,
             model_class.Config,
-            OptimConfig,
+            optim_class.Config,
         ):
             common_param_set = (
                 set(f.name for f in fields(config_class)) & conf_dict.keys()
@@ -153,7 +158,7 @@ class XConfiguration:
         self,
         root: Path,
         model: LabModel,
-        optim: Optimizer,
+        optim: LabOptimizer,
     ):
         filepath = root / f"{self.filebase}_mdl_{optim.iteration:0>6d}.pth"
         save_dict = {
@@ -165,7 +170,7 @@ class XConfiguration:
         }
         torch.save(save_dict, filepath)
 
-    def save_model(self, root: Path, model: LabModel, optim: Optimizer):
+    def save_model(self, root: Path, model: LabModel, optim: LabOptimizer):
         filepath = root / f"{self.filebase}_mdl.pth"
         save_dict = {
             "params": self.params,

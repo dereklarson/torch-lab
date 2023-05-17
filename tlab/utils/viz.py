@@ -18,7 +18,7 @@ from plotly.subplots import make_subplots
 
 from tlab.experiment import Experiment
 from tlab.observation import Observations
-from tlab.optimize import Optimizer
+from tlab.optimizers.lab_optimizer import LabOptimizer
 from tlab.utils.analysis import fourier_basis
 from tlab.utils.util import gpu_mem, to_numpy
 
@@ -26,7 +26,7 @@ plt.rcParams["savefig.bbox"] = "tight"
 
 
 def display(
-    optim: Optimizer, obs: Observations, entries: Tuple[str, ...] = tuple()
+    optim: LabOptimizer, obs: Observations, entries: Tuple[str, ...] = tuple()
 ) -> Dict[str, str]:
     """Postfix for TQDM progress bar, to track key optimization variables."""
     display_entries = dict(
@@ -142,7 +142,7 @@ def _layout(
         fig.update_yaxes(type="log")
 
 
-def plot_loss(optim: Optimizer, log_x=False, log_y=True) -> go.Figure:
+def plot_loss(optim: LabOptimizer, log_x=False, log_y=True) -> go.Figure:
     fig = go.Figure()
     _layout(fig, "Loss curve", (600, 400), log_x=log_x, log_y=log_y)
     fig.update_layout(

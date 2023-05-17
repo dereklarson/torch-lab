@@ -23,7 +23,7 @@ import torch
 
 from tlab.datasets.algorithmic import DataBatch, LabDataset
 from tlab.models.lab_model import LabModel
-from tlab.optimize import Optimizer
+from tlab.optimizers.lab_optimizer import LabOptimizer
 from tlab.utils.analysis import fourier_basis, self_similarity, sign_similarity
 
 
@@ -85,7 +85,7 @@ class Observations:
         key,
         func,
         model: LabModel,
-        optim: Optimizer,
+        optim: LabOptimizer,
         data: LabDataset,
         **kwargs,
     ) -> None:
@@ -94,7 +94,7 @@ class Observations:
     def observe_batch(
         self,
         model: LabModel,
-        optim: Optimizer,
+        optim: LabOptimizer,
         data: LabDataset,
         **kwargs,
     ) -> None:
@@ -106,7 +106,7 @@ class Observations:
     def observe(
         self,
         model: LabModel,
-        optim: Optimizer,
+        optim: LabOptimizer,
         data: LabDataset,
         **kwargs,
     ) -> None:
@@ -177,12 +177,12 @@ class Observables:
     """Collection of functions that can be referenced by add_observable()."""
 
     @staticmethod
-    def train_loss(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def train_loss(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         return optim.train_losses[-1]
 
     @staticmethod
     def val_loss(
-        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
+        model: LabModel, optim: LabOptimizer, dataset: LabDataset, **kwargs
     ) -> float:
         losses = []
         for batch in dataset.val_loader:
@@ -191,13 +191,13 @@ class Observables:
 
     @staticmethod
     def train_accuracy(
-        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
+        model: LabModel, optim: LabOptimizer, dataset: LabDataset, **kwargs
     ) -> float:
         return _accuracy(model, dataset.get_batch("train"))
 
     @staticmethod
     def val_accuracy(
-        model: LabModel, optim: Optimizer, dataset: LabDataset, **kwargs
+        model: LabModel, optim: LabOptimizer, dataset: LabDataset, **kwargs
     ) -> float:
         accuracies = []
         for batch in dataset.val_loader:
@@ -206,7 +206,7 @@ class Observables:
 
     @staticmethod
     def error_rate(
-        model: LabModel, optim: Optimizer, dataset: tuple, **kwargs
+        model: LabModel, optim: LabOptimizer, dataset: tuple, **kwargs
     ) -> float:
         results = []
         for batch in dataset.val_loader:
@@ -215,14 +215,14 @@ class Observables:
 
     @staticmethod
     def sign_similarity(
-        model: LabModel, optim: Optimizer, data: tuple, **kwargs
+        model: LabModel, optim: LabOptimizer, data: tuple, **kwargs
     ) -> int:
         tensor = dict(model.named_parameters())[kwargs.get("name")]
         return float(torch.max(sign_similarity(tensor, 0.00)))
 
     @staticmethod
     def self_similarity(
-        model: LabModel, optim: Optimizer, data: tuple, **kwargs
+        model: LabModel, optim: LabOptimizer, data: tuple, **kwargs
     ) -> int:
         tensor = dict(model.named_parameters())[kwargs.get("name")]
         normed_similarity = torch.linalg.norm(self_similarity(tensor))
@@ -230,7 +230,7 @@ class Observables:
         return float(normed_similarity)
 
     @staticmethod
-    def embed_g1(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def embed_g1(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         # Get the param-wise moving exponential average of the gradient squared
         embed_g2 = optim.optimizer.state_dict()["state"][0]["exp_avg"]
         token_idx: str = kwargs.get("row", 0)
@@ -238,7 +238,7 @@ class Observables:
         return abs(float(embed_g2[token_idx, embed_idx].to("cpu")))
 
     @staticmethod
-    def embed_g2(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def embed_g2(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         # Get the param-wise moving exponential average of the gradient squared
         embed_g2 = optim.optimizer.state_dict()["state"][0]["exp_avg_sq"]
         token_idx: str = kwargs.get("row", 0)
@@ -246,7 +246,7 @@ class Observables:
         return float(embed_g2[token_idx, embed_idx].to("cpu"))
 
     @staticmethod
-    def weight_norm(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def weight_norm(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         return float(
             torch.linalg.norm(
                 torch.concat([par.flatten() for par in model.parameters()])
@@ -254,7 +254,7 @@ class Observables:
         )
 
     @staticmethod
-    def comp_wnorm(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def comp_wnorm(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         param_name: str = kwargs.get("name", "")
         return float(
             torch.linalg.norm(dict(model.named_parameters())[param_name].flatten()).to(
@@ -263,7 +263,7 @@ class Observables:
         )
 
     @staticmethod
-    def embed_hf_fourier(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def embed_hf_fourier(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         """Calculate the highest frequency fourier component of W_E"""
         # There are n_vocab / 2 frequencies, with a cosine and sine term each
         # The constant term is at index 0, the cosine term of highest freq is at n_vocab - 1
@@ -274,7 +274,7 @@ class Observables:
         return float(top_comp[n_comp - 1])
 
     @staticmethod
-    def embed_fi_gini(model: LabModel, optim: Optimizer, data, **kwargs) -> float:
+    def embed_fi_gini(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
         """Calculate the 'Fourier Inverse Gini' coefficient of W_E"""
         n_comp = model.config.n_vocab
         tensor = model.embed.W_E.detach()
@@ -286,7 +286,7 @@ class Observables:
 
     @staticmethod
     def embed_top_components(
-        model: LabModel, optim: Optimizer, data, **kwargs
+        model: LabModel, optim: LabOptimizer, data, **kwargs
     ) -> float:
         """Calculate the top_k frequencies present in W_E"""
         _, fourier_freqs = _fourier_components(

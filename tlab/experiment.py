@@ -26,6 +26,7 @@ from prettytable import PrettyTable
 from tlab.datasets import LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
+from tlab.optimizers.lab_optimizer import LabOptimizer
 from tlab.utils.util import StopExecution
 from tlab.xconfiguration import XConfiguration
 
@@ -54,8 +55,11 @@ class Experiment:
         self.dataset_class: Type[LabDataset] = defaults["dataset_class"]
         assert "model_class" in defaults, "'defaults' must specify 'model_class'"
         self.model_class: Type[LabModel] = defaults["model_class"]
+        assert "optim_class" in defaults, "'defaults' must specify 'optim_class'"
+        self.optim_class: Type[LabOptimizer] = defaults["optim_class"]
+
         self.valid_params = XConfiguration.valid_params(
-            self.dataset_class, self.model_class
+            self.dataset_class, self.model_class, self.optim_class
         )
         for key in self.defaults:
             assert key in self.valid_params.keys(), f"{key} is an invalid parameter"
@@ -231,6 +235,7 @@ class Experiment:
                 idx,
                 dataset_class=self.dataset_class,
                 model_class=self.model_class,
+                optim_class=self.optim_class,
                 conf_dict=params,
                 variables=variables,
             )
