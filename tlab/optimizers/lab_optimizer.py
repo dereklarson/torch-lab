@@ -2,9 +2,10 @@
 """
 import math
 from dataclasses import dataclass
-from typing import Type
+from typing import Callable, Type
 
 import torch
+import torch.nn.functional as F
 
 from tlab.datasets.lab_dataset import DataBatch
 from tlab.models.lab_model import LabModel
@@ -15,6 +16,7 @@ class LabOptimizer(metaclass=NameRepr):
     @dataclass
     class Config:
         optim_class: Type["LabOptimizer"]
+        loss_func: Callable = F.cross_entropy
         n_epochs: int = 10000
         learning_rate: float = 1e-3
         warmup_iters: int = 10
@@ -25,9 +27,9 @@ class LabOptimizer(metaclass=NameRepr):
         torch_dtype: str = "float32"
         grad_clip: float = 0.0
 
-    def __init__(self, cfg: Config, model: LabModel, loss_func, device="cuda") -> None:
+    def __init__(self, cfg: Config, model: LabModel, device="cuda") -> None:
         self.config = cfg
-        self.loss_func = loss_func
+        self.loss_func = cfg.loss_func
         self.device = device
 
         self.optimizer = torch.optim.AdamW(
@@ -56,10 +58,12 @@ class LabOptimizer(metaclass=NameRepr):
         self.epoch = 0
         self.iteration = 0
         self.train_losses = []
+        self.observed_loss = None
 
     def measure_loss(self, model: LabModel, batch: DataBatch) -> torch.Tensor:
         train_loss = self.loss_func(model(batch.inputs), batch.targets)
         self.train_losses.append(train_loss.item())
+        self.observed_loss = self.train_losses[-1]
         return train_loss
 
     def step(self, model: LabModel, batch: DataBatch) -> None:
