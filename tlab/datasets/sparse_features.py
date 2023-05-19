@@ -1,20 +1,17 @@
 """Methods for generating synthetic data.
 """
-import itertools
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
+import torch.nn.functional as F
 
 from tlab.datasets.lab_dataset import DataBatch, LabDataset
-from tlab.utils.util import to_numpy
 
 
 class SparseFeatures(LabDataset):
     @dataclass
     class Config(LabDataset.Config):
-        data_size: int = 1000
+        train_samples: int = 1000
         n_features: int = 10000
         p_active: float = 0.001
 
@@ -22,25 +19,13 @@ class SparseFeatures(LabDataset):
         self,
         cfg: Config,
     ) -> None:
-        self.config = cfg
+        super().__init__(cfg)
 
-        feat = torch.rand((cfg.data_size, cfg.n_features), device="cuda")
-        self.train = torch.nn.functional.normalize(
-            torch.where(
-                torch.rand((cfg.data_size, cfg.n_features), device="cuda")
-                <= cfg.p_active,
-                feat,
-                torch.zeros((), device="cuda"),
-            )
-        )
-        self.val = torch.nn.functional.normalize(
-            torch.where(
-                torch.rand((cfg.data_size, cfg.n_features), device="cuda")
-                <= cfg.p_active,
-                feat,
-                torch.zeros((), device="cuda"),
-            )
-        )
+        full_feat = torch.rand((cfg.train_samples * 2, cfg.n_features))
+        mask = torch.rand((cfg.train_samples * 2, cfg.n_features))
+        features = torch.where(mask <= cfg.p_active, full_feat, torch.zeros(()))
+        self.train = F.normalize(features[: cfg.train_samples]).to(cfg.device)
+        self.val = F.normalize(features[cfg.train_samples :]).to(cfg.device)
 
     def get_batch(self, split: str) -> DataBatch:
         if split == "train":
