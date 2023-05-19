@@ -14,12 +14,13 @@ class LabDataset(metaclass=NameRepr):
     class Config:
         dataset_class: Type["LabDataset"]
         data_seed: int
+        device: str = "cuda"
 
     def __init__(
         self,
         cfg: Config,
     ) -> None:
-        pass
+        self.config = cfg
 
     def stats(self) -> None:
         print(

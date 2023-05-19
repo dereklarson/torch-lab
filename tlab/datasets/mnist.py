@@ -17,7 +17,7 @@ class MNIST(LabDataset):
         batch_size: int = 1000
 
     def __init__(self, cfg: Config):
-        self.config = cfg
+        super().__init__(cfg)
 
         self.train_data = torchvision.datasets.MNIST(
             "/files/",

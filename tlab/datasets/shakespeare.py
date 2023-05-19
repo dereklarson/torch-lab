@@ -18,7 +18,8 @@ class Shakespeare(LabDataset):
         eval_iters: int = 200
 
     def __init__(self, cfg: Config):
-        self.config = cfg
+        super().__init__(cfg)
+
         data_dir = os.path.join("./data", "shakespeare")
         self.train_data = np.memmap(
             os.path.join(data_dir, "train.bin"), dtype=np.uint16, mode="r"

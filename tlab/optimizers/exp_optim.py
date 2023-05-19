@@ -19,8 +19,8 @@ class ExpOptim(LabOptimizer):
         repulsion_strength: float = 0.0  # Encourages orthogonality in weight matrices
         repulsion_decay: float = 1.0  # Multiplies repulsive strength every epoch
 
-    def __init__(self, cfg: Config, model: LabModel, loss_func, device="cuda") -> None:
-        super().__init__(cfg, model, loss_func, device)
+    def __init__(self, cfg: Config, model: LabModel, device="cuda") -> None:
+        super().__init__(cfg, model, device)
 
     def step(self, model: LabModel, batch: DataBatch) -> None:
         super().step(model, batch)

@@ -38,6 +38,7 @@ class LabModel(nn.Module, metaclass=NameRepr):
     def __init__(self, cfg: Config):
         super().__init__()
         self.config = cfg
+        self.device = "cuda:0"
         self.cache = {}
 
         torch.manual_seed(cfg.torch_seed)

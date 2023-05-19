@@ -178,7 +178,7 @@ class Observables:
 
     @staticmethod
     def train_loss(model: LabModel, optim: LabOptimizer, data, **kwargs) -> float:
-        return optim.train_losses[-1]
+        return optim.observed_loss
 
     @staticmethod
     def val_loss(
