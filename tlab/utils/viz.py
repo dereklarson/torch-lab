@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import torch
 import torchvision.transforms.functional as F
@@ -537,6 +538,22 @@ def tuple_lines(data, **kwargs):
     # series = np.empty((len(data), len(data[0])))
     data = np.array(data).swapaxes(0, 1)
     return lines(data, **kwargs)
+
+
+def tensor_plot(tensor: torch.Tensor, mode: str = "dot"):
+    x, y = to_numpy(tensor)
+    fig = None
+    if mode == "dot":
+        fig = px.scatter(x=x, y=y)
+    elif mode == "vector":
+        zeros = np.zeros(len(x))
+        fig = ff.create_quiver(zeros, zeros, x, y, scale=1, arrow_scale=0.05)
+    else:
+        pass
+    mag = max(np.concatenate([abs(x), abs(y)]))
+    xr = yr = (-mag, mag)
+    fig.update_layout(width=400, height=400, yaxis_range=xr, xaxis_range=yr)
+    return fig
 
 
 def group_tuple_plot(
