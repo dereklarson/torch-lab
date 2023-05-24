@@ -22,6 +22,8 @@ class LabDataset(metaclass=NameRepr):
     ) -> None:
         self.config = cfg
 
+        np.random.seed(cfg.data_seed)
+
     def stats(self) -> None:
         print(
             f"{len(self.train)} training examples, {len(self.val)} validation examples"
