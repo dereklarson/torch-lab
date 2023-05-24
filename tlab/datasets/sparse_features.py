@@ -2,6 +2,7 @@
 """
 from dataclasses import asdict, dataclass
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -21,8 +22,8 @@ class SparseFeatures(LabDataset):
     ) -> None:
         super().__init__(cfg)
 
-        full_feat = torch.rand((cfg.train_samples * 2, cfg.n_features))
-        mask = torch.rand((cfg.train_samples * 2, cfg.n_features))
+        full_feat = torch.tensor(np.random.rand(cfg.train_samples * 2, cfg.n_features))
+        mask = torch.tensor(np.random.rand(cfg.train_samples * 2, cfg.n_features))
         features = torch.where(mask <= cfg.p_active, full_feat, torch.zeros(()))
         self.train = F.normalize(features[: cfg.train_samples]).to(cfg.device)
         self.val = F.normalize(features[cfg.train_samples :]).to(cfg.device)

@@ -75,7 +75,7 @@ class DDPM(LabOptimizer):
         if self.observed_loss is None:
             self.observed_loss = train_loss.item()
         else:
-            self.observed_loss = 0.95 * self.loss_ema + 0.05 * train_loss.item()
+            self.observed_loss = 0.95 * self.observed_loss + 0.05 * train_loss.item()
 
         self.optimizer.step()
         self.scheduler.step()

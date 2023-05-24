@@ -26,26 +26,20 @@ from tlab.utils.util import gpu_mem, to_numpy
 plt.rcParams["savefig.bbox"] = "tight"
 
 
-def display(
-    optim: LabOptimizer, obs: Observations, entries: Tuple[str, ...] = tuple()
+def pb_display(
+    optim: LabOptimizer, obs: Observations, extra: Tuple[str, ...] = tuple()
 ) -> Dict[str, str]:
     """Postfix for TQDM progress bar, to track key optimization variables."""
-    display_entries = dict(
-        train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}"
-    )
+    entries = dict(train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}")
     if "val_loss" in obs.data:
-        display_entries[
-            "val"
-        ] = f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}"
-    if "lr" in entries:
-        display_entries["lr"] = f"{optim.scheduler.get_last_lr()[0]}"
-    if "acc" in entries:
-        display_entries[
-            "acc"
-        ] = f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}"
-    if "gpu" in entries:
-        display_entries["gpu"] = f"{gpu_mem():.3f}"
-    return display_entries
+        entries["val"] = f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}"
+    if "lr" in extra:
+        entries["lr"] = f"{optim.scheduler.get_last_lr()[0]:.6f}"
+    if "acc" in extra:
+        entries["acc"] = f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}"
+    if "gpu" in extra:
+        entries["gpu"] = f"{gpu_mem():.3f}"
+    return entries
 
 
 class LivePlot:
