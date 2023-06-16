@@ -4,7 +4,7 @@ services:
     build:
       context: ${HOME}/${REPOS}/${REPO}
       dockerfile: docker/${APP}/Dockerfile
-    image: ${APP}:latest
+    image: ${APP}:0.1.0
     command:
       - "jupyter"
       - "lab"

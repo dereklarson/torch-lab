@@ -11,7 +11,6 @@ but critically also reduces error in the experimental setup.
 import itertools
 import json
 import logging
-import operator
 import os
 import pickle
 import shutil
