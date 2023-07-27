@@ -163,7 +163,10 @@ class LabModel(nn.Module, metaclass=NameRepr):
         with torch.no_grad():
             weights = dict(ablated_model.named_parameters())[param]
             if row is not None:
-                weights.data[row] = 0
+                if col is not None:
+                    weights.data[row, col] = 0
+                else:
+                    weights.data[row] = 0
             elif col is not None:
                 weights.data[:, col] = 0
         return ablated_model
