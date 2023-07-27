@@ -4,6 +4,7 @@ from typing import Set
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 @functools.lru_cache(maxsize=None)
@@ -99,3 +100,23 @@ def self_similarity(tensor: torch.Tensor) -> torch.Tensor:
     normed = (tensor.T / torch.linalg.norm(tensor, dim=1)).T
     positive_prod = torch.clamp(normed @ normed.T, min=0, max=None)
     return positive_prod.fill_diagonal_(0)
+
+
+def jac(model, dataset, param_list, weight_decay=0.001):
+    """Calculate the Jacobian of parameters wrt loss."""
+    names = [n for n, _ in model.named_parameters() if n in param_list]
+    p_tuple = tuple([p for n, p in model.named_parameters() if n in param_list])
+
+    def full_loss(params):
+        p_dict = {n: p for n, p in zip(names, params)}
+        out = torch.func.functional_call(model, p_dict, dataset.train.inputs)
+        loss = F.cross_entropy(out, dataset.train.targets)
+        # reg = torch.sum(torch.tensor([torch.linalg.norm(p) ** 2 for p in params]))
+        for par in params:
+            loss += weight_decay * torch.linalg.norm(par) ** 2
+        return loss
+
+    with torch.no_grad():
+        jacobian = torch.func.jacfwd(full_loss)(p_tuple)
+
+    return jacobian
