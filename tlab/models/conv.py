@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tlab.models.beta_components import MultLayer
+from tlab.models.beta_components import BilinearLayer
 from tlab.models.components import LinearLayer, Unembed
 from tlab.models.lab_model import LabModel
 from tlab.models.mlp import MLP
@@ -49,8 +49,8 @@ class ConvNet(LabModel):
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
-        if cfg.layer_type == "Mult":
-            self.fc1 = MultLayer(320, cfg.mlp_layer, cfg.use_bias)
+        if cfg.layer_type == "Bilinear":
+            self.fc1 = BilinearLayer(320, cfg.mlp_layer, cfg.use_bias)
         elif cfg.layer_type == "Linear":
             self.fc1 = nn.Linear(320, cfg.mlp_layer, bias=cfg.use_bias)
         else:

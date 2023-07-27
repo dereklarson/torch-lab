@@ -9,7 +9,7 @@ from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
 
 
-class MultLayer(nn.Module):
+class BilinearLayer(nn.Module):
     def __init__(self, n_in: int, n_out: int, use_bias: bool = True):
         super().__init__()
         self.use_bias = use_bias

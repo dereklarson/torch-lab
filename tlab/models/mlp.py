@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tlab.models.beta_components import MultLayer, SimpleMultLayer
+from tlab.models.beta_components import BilinearLayer, SimpleMultLayer
 from tlab.models.components import Embed, LinearLayer, Unembed
 from tlab.models.lab_model import LabModel
 from tlab.utils.hookpoint import HookPoint
@@ -31,8 +31,8 @@ class MLP(LabModel):
         n_in = cfg.n_inputs
         layers = []
         for n_out in cfg.mlp_layers:
-            if cfg.layer_type == "Mult":
-                layers.append(MultLayer(n_in, n_out, use_bias=cfg.use_bias))
+            if cfg.layer_type == "Bilinear":
+                layers.append(BilinearLayer(n_in, n_out, use_bias=cfg.use_bias))
             elif cfg.layer_type == "SimpleMult":
                 layers.append(SimpleMultLayer(n_in, n_out))
             elif cfg.layer_type == "Linear":
@@ -57,6 +57,8 @@ class MLP(LabModel):
                 x = nn.LeakyReLU(0.01)(layer(x))
             elif self.config.activation_type == "GeLU":
                 x = F.gelu(layer(x))
+            elif self.config.activation_type == "Identity":
+                x = layer(x)
             else:
                 raise NotImplementedError(
                     f"No activation called {self.config.activation_type}"
