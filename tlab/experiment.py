@@ -261,6 +261,8 @@ class Experiment:
             df = pd.DataFrame(data).assign(
                 **{k: cfg[k] for k in cfg & self.ranges.keys()}
             )
+            if df.empty:
+                continue
             df["exp_idx"] = xcon.idx
             series.append(df)
 

@@ -1,11 +1,12 @@
 """Grab-bag of methods for visualizing data.
 """
 
-import json
 import logging
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import einops
+import gif
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,16 +28,20 @@ plt.rcParams["savefig.bbox"] = "tight"
 
 
 def pb_display(
-    optim: LabOptimizer, obs: Observations, extra: Tuple[str, ...] = tuple()
+    optim: LabOptimizer,
+    obs: Observations,
+    log: bool = True,
+    extra: Tuple[str, ...] = tuple(),
 ) -> Dict[str, str]:
     """Postfix for TQDM progress bar, to track key optimization variables."""
-    entries = dict(train=f"{np.log(list(obs.data['train_loss'].values())[-1]):.4f}")
+    sfunc = np.log if log else lambda x: x
+    entries = dict(train=f"{sfunc(list(obs.data['train_loss'].values())[-1]):.4f}")
     if "val_loss" in obs.data:
-        entries["val"] = f"{np.log(list(obs.data['val_loss'].values())[-1]):.4f}"
+        entries["val"] = f"{sfunc(list(obs.data['val_loss'].values())[-1]):.4f}"
     if "lr" in extra:
         entries["lr"] = f"{optim.scheduler.get_last_lr()[0]:.6f}"
     if "acc" in extra:
-        entries["acc"] = f"{np.log(list(obs.data['val_accuracy'].values())[-1]):.4f}"
+        entries["acc"] = f"{sfunc(list(obs.data['val_accuracy'].values())[-1]):.4f}"
     if "gpu" in extra:
         entries["gpu"] = f"{gpu_mem():.3f}"
     return entries
@@ -45,7 +50,7 @@ def pb_display(
 class LivePlot:
     def __init__(
         self,
-        observations: Optional[Observations],
+        observations: Optional[Observations] = None,
         plots: Tuple[str, ...] = tuple(),
         **kwargs,
     ):
@@ -73,6 +78,16 @@ class LivePlot:
         for param in self.plots:
             self.fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
 
+    def df2plot(self, df: pd.DataFrame, base_idx: int = 0, thinning: int = 1):
+        idx = base_idx
+        for param in self.plots:
+            series = df[param].dropna().sort_index()
+            x = series.index.to_numpy()
+            y = series.to_numpy()
+            self.fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
+            self.fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
+            idx += 1
+
     def update(
         self,
         obs: Observations,
@@ -84,13 +99,30 @@ class LivePlot:
         N = len(self.plots)
         idx = N * group_idx
         df = pd.DataFrame(obs.data)
-        for param in self.plots:
-            series = df[param].dropna().sort_index()
-            x = series.index.to_numpy()
-            y = series.to_numpy()
-            self.fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
-            self.fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
-            idx += 1
+        self.df2plot(df, idx)
+
+
+def generate_gif(
+    graph_objects: List[Any],
+    titles: List[str],
+    name: str = "output",
+    duration: int = 300,
+):
+    """Save a GIF from a Plotly graph object array + titles."""
+
+    @gif.frame
+    def plot_gif_frame(graph_obj, title):
+        return go.Figure(
+            layout=dict(height=800, width=800, title=title), data=graph_obj
+        )
+
+    frames = [
+        plot_gif_frame(graph_obj, title)
+        for graph_obj, title in zip(graph_objects, titles)
+    ]
+
+    # Save gif from frames with a specific duration for each frame in ms
+    gif.save(frames, f"{name}.gif", duration=duration)
 
 
 def _scatter(
@@ -312,6 +344,41 @@ def _update_layout(fig, **kwargs):
         pass
 
 
+def _frames2slider(frames: List[go.Frame]) -> List[Dict]:
+    """Create list of slider steps from Plotly frames."""
+    sliders = [
+        {
+            "steps": [
+                {
+                    "args": [
+                        [f.name],
+                        {
+                            "frame": {"duration": 0, "redraw": True},
+                            "mode": "immediate",
+                        },
+                    ],
+                    "label": f.name,
+                    "method": "animate",
+                }
+                for f in frames
+            ],
+        }
+    ]
+    return sliders
+
+
+def graphs2slidable(graph_objects: List[Any], titles=None) -> go.Figure:
+    titles = titles or list(range(len(graph_objects)))
+    frames = [
+        go.Frame(name=titles[idx], data=graph_obj)
+        for idx, graph_obj in enumerate(graph_objects)
+    ]
+
+    fig = go.Figure(data=frames[0].data, frames=frames)
+    fig.update_layout(sliders=_frames2slider(frames))
+    return fig
+
+
 def _create_slider(
     exp: Experiment,
     cols: int,
@@ -338,6 +405,48 @@ def _create_slider(
         steps=slider_steps,
     )
     return slider
+
+
+def error_plot(
+    df: pd.DataFrame,
+    group: str,
+    param: str,
+    name: str = None,
+):
+    mean = df.groupby(group).mean()
+    std = df.groupby(group).std()
+    if name is None:
+        name = param
+    data = [
+        go.Scatter(
+            name=name,
+            x=mean.index,
+            y=mean[param],
+            mode="lines",
+            line=dict(color="rgb(31, 119, 180)"),
+        ),
+        go.Scatter(
+            name=name,
+            x=mean.index,
+            y=mean[param] + std[param],
+            mode="lines",
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            showlegend=False,
+        ),
+        go.Scatter(
+            name=name,
+            x=mean.index,
+            y=mean[param] - std[param],
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            mode="lines",
+            fillcolor="rgba(68, 68, 68, 0.3)",
+            fill="tonexty",
+            showlegend=False,
+        ),
+    ]
+    return data
 
 
 def plot_tensor_vectors(
@@ -548,6 +657,13 @@ def tensor_plot(tensor: torch.Tensor, mode: str = "dot"):
     xr = yr = (-mag, mag)
     fig.update_layout(width=400, height=400, yaxis_range=xr, xaxis_range=yr)
     return fig
+
+
+def tensor_grid_plot(
+    tensors: List[torch.Tensor], mode: str = "dot", n_col: int = 5
+) -> None:
+    n_row = math.ceil(len(tensors) / n_col)
+    fig = make_subplots(rows=n_row, cols=n_col, start_cell="bottom-left")
 
 
 def group_tuple_plot(
