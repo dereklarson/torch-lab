@@ -6,7 +6,6 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import einops
-import gif
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -109,6 +108,7 @@ def generate_gif(
     duration: int = 300,
 ):
     """Save a GIF from a Plotly graph object array + titles."""
+    import gif
 
     @gif.frame
     def plot_gif_frame(graph_obj, title):
