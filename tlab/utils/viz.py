@@ -74,32 +74,32 @@ class LivePlot:
         self.hidden = True
 
     def add_series(self, tag: str):
-        args = {"group": tag, "thinning": 0}
+        args = {"group": tag}
         for param in self.plots:
             self.fig.add_trace(_scatter(x=None, y=None, name=param, tag=tag, **args))
 
-    def df2plot(self, df: pd.DataFrame, base_idx: int = 0, thinning: int = 1):
+    def df2plot(self, df: pd.DataFrame, base_idx: int = 0, window_avg: int = 1):
         idx = base_idx
         for param in self.plots:
             series = df[param].dropna().sort_index()
             x = series.index.to_numpy()
             y = series.to_numpy()
-            self.fig.data[idx].x = x.reshape(-1, thinning).mean(axis=1)
-            self.fig.data[idx].y = y.reshape(-1, thinning).mean(axis=1)
+            self.fig.data[idx].x = x.reshape(-1, window_avg).mean(axis=1)
+            self.fig.data[idx].y = y.reshape(-1, window_avg).mean(axis=1)
             idx += 1
 
     def update(
         self,
         obs: Observations,
         group_idx: int,
-        thinning: int = 1,
+        window_avg: int = 1,
     ):
         if self.hidden:
             return
         N = len(self.plots)
         idx = N * group_idx
         df = pd.DataFrame(obs.data)
-        self.df2plot(df, idx)
+        self.df2plot(df, idx, window_avg=window_avg)
 
 
 def generate_gif(
@@ -131,18 +131,12 @@ def _scatter(
     name: str,
     tag: str,
     group: Optional[str] = None,
-    thinning: int = 1,
-    smoothening: int = 1,
+    window: int = 1,
     **kwargs,
 ):
-    if thinning > 1:
-        stride = len(x) // thinning
-        x = x[::stride]
-        y = y[::stride]
-    if smoothening > 1:
-        stride = len(x) // thinning
-        x = x.reshape(-1, smoothening).mean(axis=1)
-        y = y.reshape(-1, smoothening).mean(axis=1)
+    if window > 1:
+        x = x.reshape(-1, window).mean(axis=1)
+        y = y.reshape(-1, window).mean(axis=1)
     legend_params = {}
     if group is not None:
         legend_params["legendgroup"] = group
@@ -482,10 +476,10 @@ def plot_tensor_vectors(
     fig.show()
 
 
-def plot_embedding_frames(exp, idx, param: str = "embed.W_E", **kwargs):
-    epochs, frames, traces = [], [], []
-    xcon = exp[idx]
-    for idx, cp_params in enumerate(xcon.load_model_checkpoints(exp.path)):
+def checkpoints2frames(exp: Experiment, exp_idx: int, param: str, **kwargs):
+    epochs, frames = [], []
+    xcon = exp[exp_idx]
+    for cp_params in xcon.load_model_checkpoints(exp.path):
         epoch = cp_params["epoch"]
         data = to_numpy(cp_params["model"][param]).T
         epochs.append(epoch)
