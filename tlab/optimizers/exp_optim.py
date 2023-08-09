@@ -18,6 +18,7 @@ class ExpOptim(LabOptimizer):
         shuffle_threshold: float = 0.0  # Perform an update to reduce sign similarity
         repulsion_strength: float = 0.0  # Encourages orthogonality in weight matrices
         repulsion_decay: float = 1.0  # Multiplies repulsive strength every epoch
+        experimental_reg: float = 0.0  # Add e.g. L-0.5 or sigmoid regularization
 
     def __init__(self, cfg: Config, model: LabModel, device="cuda") -> None:
         super().__init__(cfg, model, device)
@@ -30,6 +31,18 @@ class ExpOptim(LabOptimizer):
             if not params and self.iteration < 5:
                 print("Repulsion strength set with no parameters")
             self.repulsion_update(model, params, self.config.repulsion_strength)
+
+        if self.config.experimental_reg > 0:
+            coeff = self.config.learning_rate * self.config.experimental_reg
+            with torch.no_grad():
+                for name, param in model.named_parameters():
+                    if not "W_A" in name and not "W_B" in name:
+                        continue
+                    # L05 reg seems unstable (sign switching for small values)
+                    # param -= coeff * torch.sign(param) / param.abs() ** 0.5
+
+                    # Sigmoid reg
+                    param -= coeff * (torch.sigmoid(0.1 * param) - 0.5)
 
     def repulsion_update(
         self, model: LabModel, params: List[str], strength: float = 0.001
