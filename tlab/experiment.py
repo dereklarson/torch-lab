@@ -26,6 +26,7 @@ from tlab.datasets import LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.observation import Observations
 from tlab.optimizers.lab_optimizer import LabOptimizer
+from tlab.utils import param_repr
 from tlab.utils.util import StopExecution
 from tlab.xconfiguration import XConfiguration
 
@@ -170,7 +171,7 @@ class Experiment:
         table = PrettyTable(["Parameter", "Value"])
         non_defaults = self.ranges.keys() | self.relations.keys()
         for param in sorted(self.defaults.keys() - non_defaults):
-            table.add_row([param, self.defaults[param]])
+            table.add_row([param, param_repr(self.defaults[param])])
         for param in sorted(self.relations.keys()):
             rel = self.relations[param]
             table.add_row(
@@ -180,7 +181,7 @@ class Experiment:
             values = self.ranges[param][:10]
             if len(self.ranges[param]) > 10:
                 values += ("...",)
-            table.add_row([f"*{param}", values])
+            table.add_row([f"*{param}", [param_repr(val) for val in values]])
         print(table)
 
     def initialize(self, force: bool = False):
@@ -258,9 +259,8 @@ class Experiment:
             if any([fs not in xcon.tag for fs in filter_strs]):
                 continue
             data, cfg = Observations.load(self.path, xcon.filebase, verbose=verbose)
-            df = pd.DataFrame(data).assign(
-                **{k: cfg[k] for k in cfg & self.ranges.keys()}
-            )
+            param_dict = {k: param_repr(cfg[k]) for k in cfg & self.ranges.keys()}
+            df = pd.DataFrame(data).assign(**param_dict)
             if df.empty:
                 continue
             df["exp_idx"] = xcon.idx

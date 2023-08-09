@@ -20,6 +20,7 @@ from prettytable import PrettyTable
 from tlab.datasets import LabDataset
 from tlab.models.lab_model import LabModel
 from tlab.optimizers.lab_optimizer import LabOptimizer
+from tlab.utils import param_repr
 from tlab.utils.util import (
     get_attention_patterns,
     get_mlp,
@@ -126,7 +127,7 @@ class XConfiguration:
         codes = []
         for parameter in self.variables:
             par_code = "".join(word[0] for word in parameter.split("_"))
-            codes.append((par_code, self.params[parameter]))
+            codes.append((par_code, param_repr(self.params[parameter])))
         return codes
 
     @property
