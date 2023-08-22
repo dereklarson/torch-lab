@@ -38,7 +38,6 @@ class SimpleEncoder(LabModel):
         self._init_hooks()
 
     def forward(self, x):
-        x = torch.flatten(x, 1)
         x = x @ self.weight.T
         x = self.hook_embed(x)
         if self.use_bias:
@@ -53,5 +52,5 @@ class SimpleEncoder(LabModel):
             raise NotImplementedError(
                 f"No activation called {self.config.activation_type}"
             )
-        x = x @ self.output
+        x = x @ F.normalize(self.output, dim=1)
         return x
